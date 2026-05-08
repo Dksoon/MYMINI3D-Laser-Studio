@@ -1,0 +1,44 @@
+# Claude Code local session files
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+
+# PyInstaller output
+dist/
+build/
+
+# Installer output
+release/
+
+# Bundled factory data (contains user DB — never commit)
+installer/bundled_data/
+
+# Generated icon (rebuilt by generate_icon.py)
+installer/icon.ico
+
+# SQLite databases (user data lives in %APPDATA%\MYMINI3D)
+*.db
+*.sqlite
+*.sqlite3
+
+# Config / secrets
+config.json
+.env
+*.env
+
+# Microsoft Office temp files
+~$*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/

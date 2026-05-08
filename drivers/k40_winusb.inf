@@ -1,0 +1,57 @@
+; =====================================================================
+; K40 Laser Cutter — WinUSB Driver
+; Targets: CH341 USB chip (VID_1A86, PID_5512)
+; WinUSB is built into Windows 10/11 — no extra files needed.
+; Install via:  pnputil /add-driver k40_winusb.inf /install
+; =====================================================================
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = USBDevice
+ClassGUID   = {88BAE032-5A81-49f0-BC3D-A4FF138216D6}
+Provider    = %ProviderName%
+DriverVer   = 01/01/2024,1.0.0.0
+CatalogFile = k40_winusb.cat
+PnpLockdown = 1
+
+[Manufacturer]
+%ManufacturerName% = DeviceList, NTamd64, NTx86
+
+[DeviceList.NTamd64]
+%DeviceName% = USB_Install, USB\VID_1A86&PID_5512
+
+[DeviceList.NTx86]
+%DeviceName% = USB_Install, USB\VID_1A86&PID_5512
+
+[USB_Install]
+Include = winusb.inf
+Needs   = WINUSB.NT
+
+[USB_Install.Services]
+Include    = winusb.inf
+AddService = WinUSB,,WinUSB_ServiceInstall
+
+[WinUSB_ServiceInstall]
+DisplayName   = %WinUSB_SvcDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\WinUSB.sys
+
+[USB_Install.Wdf]
+KmdfService = WINUSB, WinUSB_wdfsect
+
+[WinUSB_wdfsect]
+KmdfLibraryVersion = 1.9
+
+[USB_Install.HW]
+AddReg = Dev_AddReg
+
+[Dev_AddReg]
+HKR,,DeviceInterfaceGUIDs,0x10000,"{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
+
+[Strings]
+ProviderName    = "MYMINI3D"
+ManufacturerName = "WCH"
+DeviceName      = "K40 Laser Cutter"
+WinUSB_SvcDesc  = "WinUSB"
