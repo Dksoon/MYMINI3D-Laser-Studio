@@ -1,0 +1,359 @@
+{
+  "version": "1.0",
+  "exported_at": "2026-05-09 03:11",
+  "product_count": 88,
+  "products": [
+    {
+      "name": "CLDC XL",
+      "category": "CLDC"
+    },
+    {
+      "name": "DIGIMON LD",
+      "category": "DIGIMON"
+    },
+    {
+      "name": "DIGIMON SD",
+      "category": "DIGIMON"
+    },
+    {
+      "name": "LBKUMA",
+      "category": "FIG"
+    },
+    {
+      "name": "FUNKO SPMG",
+      "category": "FUNKO"
+    },
+    {
+      "name": "GUARDIAN HW V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "GUARDIAN HWG V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "GUARDIAN HWL V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "GUARDIAN HWS V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "HOTWHEEL XL",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "HWF1 GRD",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "LS HOTWHEEL MGV3 NO BLACK BASE PANEL",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "LS HOTWHEEL MGV3 WITH BLACK BASE PANEL",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "STD HW LONG V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "STD HW PREMIUM V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "STD HW SHORT V3",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "TRIPLET HW",
+      "category": "HOT WHEELS"
+    },
+    {
+      "name": "ADVAN MG V5",
+      "category": "KAIDO"
+    },
+    {
+      "name": "B KAIDO TALL V3",
+      "category": "KAIDO"
+    },
+    {
+      "name": "DUO DECKER KAIDO",
+      "category": "KAIDO"
+    },
+    {
+      "name": "DUO KAIDO MG V3",
+      "category": "KAIDO"
+    },
+    {
+      "name": "DUO KAIDO V2S2",
+      "category": "KAIDO"
+    },
+    {
+      "name": "EXR KAIDO LED V5",
+      "category": "KAIDO"
+    },
+    {
+      "name": "EXR KAIDO V5",
+      "category": "KAIDO"
+    },
+    {
+      "name": "GRASSHOPPER LIGHT VERSION",
+      "category": "KAIDO"
+    },
+    {
+      "name": "GRASSHOPPER NO LIGHT VERSION",
+      "category": "KAIDO"
+    },
+    {
+      "name": "HORNET KHMG BASIC NO LIGHT",
+      "category": "KAIDO"
+    },
+    {
+      "name": "HORNET KHMG PREMIUM LIGHT",
+      "category": "KAIDO"
+    },
+    {
+      "name": "KAIDO CV4 MG",
+      "category": "KAIDO"
+    },
+    {
+      "name": "KAIDO EV4 MG",
+      "category": "KAIDO"
+    },
+    {
+      "name": "KAIDO HKS",
+      "category": "KAIDO"
+    },
+    {
+      "name": "KAIDO MG V4",
+      "category": "KAIDO"
+    },
+    {
+      "name": "KAIDO S.E. TALL",
+      "category": "KAIDO"
+    },
+    {
+      "name": "KAIDO SV4 MG",
+      "category": "KAIDO"
+    },
+    {
+      "name": "LS KAIDO MGV3 NO BLACK BASE PANEL",
+      "category": "KAIDO"
+    },
+    {
+      "name": "LS KAIDO MGV3 WITH BLACK BASE PANEL",
+      "category": "KAIDO"
+    },
+    {
+      "name": "MDX 2025 KAIDO",
+      "category": "KAIDO"
+    },
+    {
+      "name": "S KAIDO V3",
+      "category": "KAIDO"
+    },
+    {
+      "name": "BRICKS F1MG",
+      "category": "LEGO"
+    },
+    {
+      "name": "BLISTER MG",
+      "category": "MINIGT"
+    },
+    {
+      "name": "DUO GTP",
+      "category": "MINIGT"
+    },
+    {
+      "name": "EXR GT TALL V3",
+      "category": "MINIGT"
+    },
+    {
+      "name": "EXR MINIGT LED V5",
+      "category": "MINIGT"
+    },
+    {
+      "name": "EXR MINIGT V5",
+      "category": "MINIGT"
+    },
+    {
+      "name": "LB TRANS XL",
+      "category": "MINIGT"
+    },
+    {
+      "name": "LS BLISTER GT",
+      "category": "MINIGT"
+    },
+    {
+      "name": "LS MINIGT MGV3 NO BLACK BASE PANEL",
+      "category": "MINIGT"
+    },
+    {
+      "name": "LS MINIGT MGV3 WITH BLACK BASE PANEL",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MDX 2025 MINIGT",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MINIGT F1MG",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MINIGT HEXO",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MINIGT HEXO LED",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MINIGT MG",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MINIGT N TRANS",
+      "category": "MINIGT"
+    },
+    {
+      "name": "MINIGT XLMG",
+      "category": "MINIGT"
+    },
+    {
+      "name": "REXY MG V2GL",
+      "category": "MINIGT"
+    },
+    {
+      "name": "ROXY MG",
+      "category": "MINIGT"
+    },
+    {
+      "name": "SINGLE GTP",
+      "category": "MINIGT"
+    },
+    {
+      "name": "BX INNO",
+      "category": "O.W.C"
+    },
+    {
+      "name": "DUO INNO MG",
+      "category": "O.W.C"
+    },
+    {
+      "name": "DUO MITTC MG V2",
+      "category": "O.W.C"
+    },
+    {
+      "name": "INNO MG V2",
+      "category": "O.W.C"
+    },
+    {
+      "name": "MITTC SMG V2",
+      "category": "O.W.C"
+    },
+    {
+      "name": "SINGLE MITTC MG V2",
+      "category": "O.W.C"
+    },
+    {
+      "name": "TASKL HC INNO MG",
+      "category": "O.W.C"
+    },
+    {
+      "name": "TASKL INNO MG",
+      "category": "O.W.C"
+    },
+    {
+      "name": "TMCS 2025 POPRACE",
+      "category": "O.W.C"
+    },
+    {
+      "name": "TMCS HGINNO MG 2025",
+      "category": "O.W.C"
+    },
+    {
+      "name": "TMCS INNO MG 2025",
+      "category": "O.W.C"
+    },
+    {
+      "name": "TRI MITTC MG V2",
+      "category": "O.W.C"
+    },
+    {
+      "name": "LS BLANK MGV3 NO BLACK BASE PANEL",
+      "category": "OPEN"
+    },
+    {
+      "name": "LS BLANK MGV3 WITH BLACK BASE PANEL",
+      "category": "OPEN"
+    },
+    {
+      "name": "LSS KEYCHAIN",
+      "category": "OPEN"
+    },
+    {
+      "name": "DUO PEAKO",
+      "category": "PEAKO"
+    },
+    {
+      "name": "PGM MG",
+      "category": "PGM"
+    },
+    {
+      "name": "TASKL POPRACE MG",
+      "category": "POP RACE"
+    },
+    {
+      "name": "LS POPRACE MGV3 NO BLACK BASE PANEL",
+      "category": "POPRACE"
+    },
+    {
+      "name": "LS POPRACE MGV3 WITH BLACK BASE PANEL",
+      "category": "POPRACE"
+    },
+    {
+      "name": "MOONEYES EGMG",
+      "category": "POPRACE"
+    },
+    {
+      "name": "MOONEYES PRMG",
+      "category": "POPRACE"
+    },
+    {
+      "name": "POPRACE MG",
+      "category": "POPRACE"
+    },
+    {
+      "name": "PORACE MGXL",
+      "category": "POPRACE.INT"
+    },
+    {
+      "name": "TARMAC F1MG",
+      "category": "TARMAC"
+    },
+    {
+      "name": "TARMAC VMG",
+      "category": "TARMAC"
+    },
+    {
+      "name": "TARMAC XGT",
+      "category": "TARMAC"
+    },
+    {
+      "name": "STD TAKARA EXR V5",
+      "category": "TOMICA"
+    },
+    {
+      "name": "STD TAKARA LED V5",
+      "category": "TOMICA"
+    },
+    {
+      "name": "TLVN VRD",
+      "category": "TOMICA"
+    }
+  ]
+}
