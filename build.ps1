@@ -52,6 +52,18 @@ if (-not (Test-Path $DistExe)) {
 }
 Write-Host "      Built: $DistExe" -ForegroundColor Green
 
+# ── Step 4.4: Bundle master product list (if available) ──────────────
+Write-Host "[4.4] Checking for master product list..." -ForegroundColor Yellow
+$ProductsFile = "$ProjectRoot\installer\products_default.json"
+if (Test-Path $ProductsFile) {
+    Copy-Item $ProductsFile "$ProjectRoot\dist\$AppName\products_default.json" -Force
+    $ProductCount = (Get-Content $ProductsFile | ConvertFrom-Json).product_count
+    Write-Host "      Bundled products_default.json  ($ProductCount products)" -ForegroundColor Green
+} else {
+    Write-Host "      No products_default.json found — skipping." -ForegroundColor Yellow
+    Write-Host "      To bundle products: Settings → Data → Export Product List → save as installer\products_default.json" -ForegroundColor Yellow
+}
+
 # ── Step 4.5: Bundle factory data (if available) ─────────────────────
 Write-Host "[4.5] Checking for factory data to bundle..." -ForegroundColor Yellow
 

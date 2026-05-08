@@ -100,6 +100,9 @@ class MainWindow(QMainWindow):
         self._sb_timer.start(5000)
         self._refresh_status()
 
+        # Startup product-sync check — runs 2 s after window opens
+        QTimer.singleShot(2000, self._check_bundled_products)
+
     def _add_page(self, key: str, widget: QWidget):
         self._pages[key] = widget
         self._stack.addWidget(widget)
@@ -128,6 +131,50 @@ class MainWindow(QMainWindow):
                 f"  ⬆  Update available: v{latest}  —  go to Settings → Updates"
             )
             self._status_label.setStyleSheet("color:#d29922;")
+
+    def _check_bundled_products(self):
+        from app.core.product_sync import bundled_path, bundled_hash, bundled_count
+        from app.core.config import load_config, save_config
+        p = bundled_path()
+        if not p:
+            return
+        current_hash = bundled_hash()
+        cfg = load_config()
+        if cfg.get("last_product_sync_hash") == current_hash:
+            return  # already handled this version
+
+        count = bundled_count()
+        from PyQt6.QtWidgets import QMessageBox
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Product List Update")
+        msg.setText(
+            f"A master product list is available ({count} products).\n\n"
+            "What would you like to do?"
+        )
+        msg.setInformativeText(
+            "• Keep my products — your current list stays unchanged\n"
+            "• Sync — delete your current products and load the master list\n\n"
+            "Your jobs and task queue are never affected."
+        )
+        keep_btn = msg.addButton("Keep my products", QMessageBox.ButtonRole.RejectRole)
+        sync_btn = msg.addButton("Sync product list", QMessageBox.ButtonRole.DestructiveRole)
+        msg.setDefaultButton(keep_btn)
+        msg.exec()
+
+        if msg.clickedButton() is sync_btn:
+            from app.core.product_sync import import_products
+            ok, result = import_products(str(p), replace_all=True)
+            if ok:
+                self._status_label.setText(f"  ✓  {result}")
+                self._status_label.setStyleSheet("color:#3fb950;")
+                # Refresh library if open
+                lib = self._pages.get("library")
+                if lib and hasattr(lib, "refresh"):
+                    lib.refresh()
+
+        # Mark as handled regardless of choice
+        cfg["last_product_sync_hash"] = current_hash
+        save_config(cfg)
 
     # ------------------------------------------------------------------ close
 

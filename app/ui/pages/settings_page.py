@@ -466,35 +466,61 @@ class DataTab(QWidget):
         lay.setContentsMargins(0, 16, 0, 0)
         lay.setSpacing(16)
 
-        # ── Export ────────────────────────────────────────────────────
-        exp_frame, exp_lay = _section("Export Backup")
+        # ── Product List ──────────────────────────────────────────────
+        pl_frame, pl_lay = _section("Master Product List")
+
+        pl_info = QLabel(
+            "Export your product list to a file. "
+            "Save it to  installer\\products_default.json  inside the project folder, "
+            "then tell me to build a new installer — all new installations will "
+            "come pre-loaded with these products."
+        )
+        pl_info.setStyleSheet("color:#8b949e; font-size:12px;")
+        pl_info.setWordWrap(True)
+        pl_lay.addWidget(pl_info)
+
+        pl_btn_row = QHBoxLayout(); pl_btn_row.setSpacing(8)
+
+        exp_pl_btn = QPushButton("↑  Export Product List")
+        exp_pl_btn.setFixedHeight(32)
+        exp_pl_btn.setStyleSheet(
+            "background:#1a2e4a; color:#58a6ff; border:1px solid #1f6feb;"
+            "border-radius:4px; font-size:12px; font-weight:bold;"
+            "min-height:0; max-height:32px;"
+        )
+        exp_pl_btn.clicked.connect(self._export_products)
+        pl_btn_row.addWidget(exp_pl_btn)
+
+        imp_pl_btn = QPushButton("↓  Import / Sync Product List")
+        imp_pl_btn.setFixedHeight(32)
+        imp_pl_btn.setStyleSheet(
+            "background:#21262d; color:#e6edf3; border:1px solid #30363d;"
+            "border-radius:4px; font-size:12px; font-weight:bold;"
+            "min-height:0; max-height:32px;"
+        )
+        imp_pl_btn.clicked.connect(self._import_products)
+        pl_btn_row.addWidget(imp_pl_btn)
+        pl_btn_row.addStretch()
+        pl_lay.addLayout(pl_btn_row)
+
+        self._pl_status = QLabel()
+        self._pl_status.setStyleSheet("color:#6e7681; font-size:11px;")
+        pl_lay.addWidget(self._pl_status)
+        lay.addWidget(pl_frame)
+
+        # ── Export Backup ─────────────────────────────────────────────
+        exp_frame, exp_lay = _section("Export Full Backup")
 
         exp_info = QLabel(
             "Creates a .zip file with everything: database, library files, "
             "settings, and thumbnails.\n"
-            "Use this to transfer data to another PC or create a backup."
+            "Use this to transfer all data to another PC."
         )
         exp_info.setStyleSheet("color:#8b949e; font-size:12px;")
         exp_info.setWordWrap(True)
         exp_lay.addWidget(exp_info)
 
-        # Data size info
-        from app.core.config import get_app_data_dir
-        app_dir = get_app_data_dir()
-        try:
-            total = sum(f.stat().st_size for f in app_dir.rglob("*") if f.is_file())
-            size_str = f"{round(total / (1024*1024), 1)} MB"
-            file_count = sum(1 for f in app_dir.rglob("*") if f.is_file())
-            size_info = f"{file_count} files,  {size_str} total"
-        except Exception:
-            size_info = "calculating…"
-
-        self._size_lbl = QLabel(f"Current data: {size_info}")
-        self._size_lbl.setStyleSheet("color:#6e7681; font-size:11px;")
-        exp_lay.addWidget(self._size_lbl)
-
-        exp_btn_row = QHBoxLayout()
-        exp_btn_row.setSpacing(10)
+        exp_btn_row = QHBoxLayout(); exp_btn_row.setSpacing(10)
         exp_btn = QPushButton("Export Backup…")
         exp_btn.setObjectName("AccentButton")
         exp_btn.style().unpolish(exp_btn); exp_btn.style().polish(exp_btn)
@@ -505,8 +531,8 @@ class DataTab(QWidget):
         exp_lay.addLayout(exp_btn_row)
         lay.addWidget(exp_frame)
 
-        # ── Import ────────────────────────────────────────────────────
-        imp_frame, imp_lay = _section("Import Backup")
+        # ── Import Backup ─────────────────────────────────────────────
+        imp_frame, imp_lay = _section("Import Full Backup")
 
         imp_info = QLabel(
             "Restore data from a previously exported .zip backup.\n"
@@ -520,8 +546,7 @@ class DataTab(QWidget):
         warn_lbl.setStyleSheet("color:#d29922; font-size:11px;")
         imp_lay.addWidget(warn_lbl)
 
-        imp_btn_row = QHBoxLayout()
-        imp_btn_row.setSpacing(10)
+        imp_btn_row = QHBoxLayout(); imp_btn_row.setSpacing(10)
         imp_btn = QPushButton("Import Backup…")
         imp_btn.setFixedHeight(32)
         imp_btn.setStyleSheet(
@@ -536,6 +561,58 @@ class DataTab(QWidget):
         lay.addWidget(imp_frame)
 
         lay.addStretch()
+
+    # ── product list ──────────────────────────────────────────────────
+
+    def _export_products(self):
+        from PyQt6.QtWidgets import QFileDialog
+        from app.core.product_sync import export_products
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Product List",
+            str(Path.home() / "Downloads" / "products_default.json"),
+            "JSON Files (*.json)"
+        )
+        if not path:
+            return
+        ok, msg = export_products(path)
+        self._pl_status.setText(("✓ " if ok else "✕ ") + msg)
+        self._pl_status.setStyleSheet(
+            f"color:{'#3fb950' if ok else '#f85149'}; font-size:11px;"
+        )
+
+    def _import_products(self):
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from app.core.product_sync import import_products
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Product List", "", "JSON Files (*.json)"
+        )
+        if not path:
+            return
+
+        reply = QMessageBox(self)
+        reply.setWindowTitle("Import Product List")
+        reply.setText(
+            "How would you like to import?\n\n"
+            "• Merge — add any missing products, keep your existing ones\n"
+            "• Sync  — delete all current products and replace with the file"
+        )
+        reply.addButton("Merge (safe)", QMessageBox.ButtonRole.AcceptRole)
+        sync_btn = reply.addButton("Sync (replace all)", QMessageBox.ButtonRole.DestructiveRole)
+        reply.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        reply.exec()
+
+        clicked = reply.clickedButton()
+        if clicked is None or reply.buttonRole(clicked) == QMessageBox.ButtonRole.RejectRole:
+            return
+
+        replace_all = (clicked is sync_btn)
+        ok, msg = import_products(path, replace_all=replace_all)
+        self._pl_status.setText(("✓ " if ok else "✕ ") + msg)
+        self._pl_status.setStyleSheet(
+            f"color:{'#3fb950' if ok else '#f85149'}; font-size:11px;"
+        )
+
+    # ── full backup ───────────────────────────────────────────────────
 
     def _export(self):
         from app.ui.dialogs.export_backup_dialog import ExportBackupDialog
