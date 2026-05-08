@@ -357,7 +357,7 @@ class UpdatesTab(QWidget):
 
         self._update_url = QLineEdit(
             self._cfg.get("update_url",
-                          "https://api.github.com/repos/MYMINI3D/laser-studio/releases/latest")
+                          "https://api.github.com/repos/Dksoon/MYMINI3D-Laser-Studio/releases/latest")
         )
         self._update_url.setPlaceholderText("GitHub releases API URL")
         cfg_lay.addLayout(_row("Update URL", self._update_url,

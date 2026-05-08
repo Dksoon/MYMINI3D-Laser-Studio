@@ -1,3 +1,3 @@
-__version__ = "2.0.4"
+__version__ = "2.0.5"
 APP_NAME = "MYMINI3D Laser Studio"
 APP_ORG = "MYMINI3D"

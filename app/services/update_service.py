@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 from app import __version__
 
-GITHUB_API = "https://api.github.com/repos/MYMINI3D/laser-studio/releases/latest"
+GITHUB_API = "https://api.github.com/repos/Dksoon/MYMINI3D-Laser-Studio/releases/latest"
 
 
 def _parse_version(v: str) -> tuple:
