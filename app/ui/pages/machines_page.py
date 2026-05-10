@@ -950,11 +950,16 @@ class JobQueuePanel(QWidget):
             cl.setContentsMargins(12, 10, 12, 10)
             cl.setSpacing(6)
 
-            name_lbl = QLabel(prod_name)
-            name_lbl.setStyleSheet(
-                "color:#e6edf3; font-size:13px; font-weight:bold; border:none;"
+            name_btn = QPushButton(prod_name)
+            name_btn.setStyleSheet(
+                "color:#58a6ff; font-size:13px; font-weight:bold; border:none;"
+                "background:transparent; text-align:left; padding:0; text-decoration:underline;"
             )
-            cl.addWidget(name_lbl)
+            name_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            name_btn.setToolTip("Click to open this product's folder and load a file")
+            iid = item_id
+            name_btn.clicked.connect(lambda _, i=iid: self._open_product_folder(i))
+            cl.addWidget(name_btn)
 
             info_row = QHBoxLayout(); info_row.setSpacing(8)
             qty_lbl = QLabel(f"{qty} set{'s' if qty!=1 else ''} pending")
@@ -980,6 +985,40 @@ class JobQueuePanel(QWidget):
             self._pending_lay.addWidget(card)
 
         self._pending_lay.addStretch()
+
+    def _open_product_folder(self, item_id: int):
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from app.core.database import JobItem
+
+        with get_session() as s:
+            item = s.get(JobItem, item_id)
+            if not item or not item.product:
+                return
+            folder = item.product.folder_path or ""
+            prod_name = item.product.name
+
+        if not folder or not Path(folder).exists():
+            QMessageBox.information(
+                self, "No Folder Set",
+                f"No folder is set for '{prod_name}'.\n\n"
+                "Go to Library → Edit Product → Browse to set the folder."
+            )
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Select file for  {prod_name}",
+            folder,
+            "Design Files (*.svg *.dxf)"
+        )
+        if not path:
+            return
+
+        # Walk up to MachinesPage and load the file into the canvas
+        p = self.parent()
+        while p and not isinstance(p, MachinesPage):
+            p = p.parent()
+        if p:
+            p.load_file_to_canvas(path)
 
     def _confirm_cut(self, item_id: int):
         dlg = ConfirmCutDialog(item_id, self._machine_id, self)

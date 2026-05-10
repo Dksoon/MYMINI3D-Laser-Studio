@@ -1,11 +1,12 @@
-"""Add / Edit Product — Category + Name only. No file management."""
+"""Add / Edit Product — Category + Name + Folder path."""
 from __future__ import annotations
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QComboBox, QPushButton, QFrame, QMessageBox
+    QLineEdit, QComboBox, QPushButton, QFrame, QMessageBox, QFileDialog
 )
 from PyQt6.QtCore import Qt
 
@@ -79,6 +80,27 @@ class AddProductDialog(QDialog):
         name_row.addWidget(self._name, 1)
         flay.addLayout(name_row)
 
+        # Folder path
+        folder_row = QHBoxLayout(); folder_row.setSpacing(8)
+        folder_lbl = QLabel("Folder")
+        folder_lbl.setFixedWidth(110)
+        folder_lbl.setStyleSheet("color:#c9d1d9; font-size:12px;")
+        folder_row.addWidget(folder_lbl)
+        self._folder = QLineEdit()
+        self._folder.setPlaceholderText("Browse to set the OneDrive folder for this product…")
+        self._folder.setReadOnly(True)
+        self._folder.setStyleSheet("color:#8b949e; font-size:11px;")
+        folder_row.addWidget(self._folder, 1)
+        browse_btn = QPushButton("📁 Browse")
+        browse_btn.setFixedHeight(28)
+        browse_btn.setStyleSheet(
+            "background:#21262d; color:#e6edf3; border:1px solid #444c56;"
+            "border-radius:4px; font-size:11px; min-height:0; max-height:28px; padding:0 8px;"
+        )
+        browse_btn.clicked.connect(self._browse_folder)
+        folder_row.addWidget(browse_btn)
+        flay.addLayout(folder_row)
+
         root.addWidget(frame)
 
         btn_row = QHBoxLayout(); btn_row.setSpacing(8)
@@ -95,12 +117,21 @@ class AddProductDialog(QDialog):
         btn_row.addWidget(save)
         root.addLayout(btn_row)
 
+    def _browse_folder(self):
+        start = self._folder.text() or str(Path.home())
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Product Folder", start
+        )
+        if folder:
+            self._folder.setText(folder)
+
     def _load(self):
         with get_session() as s:
             p = s.get(Product, self._product_id)
             if p:
                 self._category.setCurrentText(p.category or "")
                 self._name.setText(p.name)
+                self._folder.setText(p.folder_path or "")
 
     def _save(self):
         name = self._name.text().strip()
@@ -121,9 +152,11 @@ class AddProductDialog(QDialog):
                     else:
                         p.name = name
                         p.category = cat
+                        p.folder_path = self._folder.text().strip()
                         p.updated_at = datetime.utcnow()
                 else:
-                    p = Product(name=name, category=cat)
+                    p = Product(name=name, category=cat,
+                                folder_path=self._folder.text().strip())
                     s.add(p)
                 s.flush()
                 self._saved_id = p.id
