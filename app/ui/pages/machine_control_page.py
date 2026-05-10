@@ -33,24 +33,40 @@ from app.core.svg_to_path import file_to_polylines, file_to_layered_paths, Layer
 class BedPreview(QWidget):
     """Visual preview of the laser bed with the loaded design overlaid."""
 
-    # Colour map: operation → display colour (matches K40 Whisperer convention)
-    _OP_COLORS = {
-        "cut":     QColor("#ff4444"),   # red   — Vector Cut
-        "engrave": QColor("#4499ff"),   # blue  — Vector Engrave
-        "raster":  QColor("#8b949e"),   # grey  — Raster Engrave
+    # Colour schemes — dark / light
+    _DARK = {
+        "bg":       "#0d1117", "bed":     "#161b22",
+        "grid":     "#21262d", "labels":  "#484f58",
+        "head":     "#58a6ff", "origin":  "#3fb950",
+        "cut":      "#ff4444", "engrave": "#4499ff", "raster": "#8b949e",
+        "legend":   "#6e7681",
+    }
+    _LIGHT = {
+        "bg":       "#f0f2f5", "bed":     "#ffffff",
+        "grid":     "#d0d7de", "labels":  "#57606a",
+        "head":     "#0550ae", "origin":  "#1a7f37",
+        "cut":      "#cf222e", "engrave": "#0550ae", "raster": "#57606a",
+        "legend":   "#57606a",
     }
 
     def __init__(self, bed_w: float = 400.0, bed_h: float = 400.0, parent=None):
         super().__init__(parent)
-        self.bed_w     = bed_w
-        self.bed_h     = bed_h
+        self.bed_w      = bed_w
+        self.bed_h      = bed_h
         self._layered: list[LayeredPath] = []
-        self._svg_path = ""
-        self._head_x   = 0.0
-        self._head_y   = 0.0
+        self._svg_path  = ""
+        self._head_x    = 0.0
+        self._head_y    = 0.0
+        self._light_mode = False
         self.setMinimumSize(360, 360)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setStyleSheet("background:#0d1117;")
+
+    def toggle_mode(self):
+        self._light_mode = not self._light_mode
+        bg = self._LIGHT["bg"] if self._light_mode else self._DARK["bg"]
+        self.setStyleSheet(f"background:{bg};")
+        self.update()
 
     def load_file(self, file_path: str):
         self._svg_path = file_path
@@ -66,51 +82,51 @@ class BedPreview(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        p   = QPainter(self)
+        c = self._LIGHT if self._light_mode else self._DARK
+        p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w   = self.width()
-        h   = self.height()
+        w, h = self.width(), self.height()
 
         # Background
-        p.fillRect(0, 0, w, h, QColor("#0d1117"))
+        p.fillRect(0, 0, w, h, QColor(c["bg"]))
 
         # Bed area
-        margin  = 20
+        margin   = 20
         bed_px_w = w - 2 * margin
         bed_px_h = h - 2 * margin
-        scale   = min(bed_px_w / self.bed_w, bed_px_h / self.bed_h)
-        off_x   = margin + (bed_px_w - self.bed_w * scale) / 2
-        off_y   = margin + (bed_px_h - self.bed_h * scale) / 2
+        scale    = min(bed_px_w / self.bed_w, bed_px_h / self.bed_h)
+        off_x    = margin + (bed_px_w - self.bed_w * scale) / 2
+        off_y    = margin + (bed_px_h - self.bed_h * scale) / 2
 
         def to_px(xmm, ymm):
             return off_x + xmm * scale, off_y + ymm * scale
 
-        # Bed rectangle
         bx, by = to_px(0, 0)
-        bw      = self.bed_w * scale
-        bh      = self.bed_h * scale
-        p.setPen(QPen(QColor("#30363d"), 1))
-        p.setBrush(QBrush(QColor("#161b22")))
+        bw     = self.bed_w * scale
+        bh     = self.bed_h * scale
+
+        # Bed rectangle
+        p.setPen(QPen(QColor(c["grid"]), 1))
+        p.setBrush(QBrush(QColor(c["bed"])))
         p.drawRect(int(bx), int(by), int(bw), int(bh))
 
-        # Grid (every 50mm)
-        p.setPen(QPen(QColor("#21262d"), 1, Qt.PenStyle.DotLine))
-        step_mm = 50
-        x = step_mm
+        # Grid (every 50 mm)
+        p.setPen(QPen(QColor(c["grid"]), 1, Qt.PenStyle.DotLine))
+        x = 50.0
         while x < self.bed_w:
             px, _ = to_px(x, 0)
             p.drawLine(int(px), int(by), int(px), int(by + bh))
-            x += step_mm
-        y = step_mm
+            x += 50
+        y = 50.0
         while y < self.bed_h:
             _, py = to_px(0, y)
             p.drawLine(int(bx), int(py), int(bx + bw), int(py))
-            y += step_mm
+            y += 50
 
         # Grid labels
-        p.setPen(QPen(QColor("#484f58")))
+        p.setPen(QPen(QColor(c["labels"])))
         try:
-            from PyQt6.QtGui import QFont
+            from PyQt6.QtGui import QFont as _QF
             f = p.font(); f.setPointSize(7); p.setFont(f)
         except Exception:
             pass
@@ -121,12 +137,11 @@ class BedPreview(QWidget):
             _, py = to_px(0, y)
             p.drawText(int(bx) - 30, int(py) + 4, f"{y}")
 
-        # Draw design paths — colour coded by operation type
-        # Red = Vector Cut  |  Blue = Vector Engrave  |  Grey = Raster
+        # Design paths — colour-coded by operation
         if self._layered:
             for lp in self._layered:
-                color = self._OP_COLORS.get(lp.operation, QColor("#f78166"))
-                pen = QPen(color, 1)
+                clr = c.get(lp.operation, c["cut"])
+                pen = QPen(QColor(clr), 1)
                 if lp.operation == "raster":
                     pen.setStyle(Qt.PenStyle.DotLine)
                 p.setPen(pen)
@@ -139,10 +154,10 @@ class BedPreview(QWidget):
                     p.drawLine(int(x1), int(y1), int(x2), int(y2))
 
         # Legend — bottom-left of bed
-        legend = [("Cut", "#ff4444"), ("Engrave", "#4499ff"), ("Raster", "#8b949e")]
+        legend = [("Cut", c["cut"]), ("Engrave", c["engrave"]), ("Raster", c["raster"])]
         try:
-            from PyQt6.QtGui import QFont as _QF
-            lf = _QF(); lf.setPointSize(7); p.setFont(lf)
+            from PyQt6.QtGui import QFont as _QF2
+            lf = _QF2(); lf.setPointSize(7); p.setFont(lf)
         except Exception:
             pass
         lx = int(bx) + 4
@@ -154,16 +169,16 @@ class BedPreview(QWidget):
 
         # Head position crosshair
         hx, hy = to_px(self._head_x, self._head_y)
-        p.setPen(QPen(QColor("#58a6ff"), 1))
+        p.setPen(QPen(QColor(c["head"]), 1))
         size = 8
         p.drawLine(int(hx - size), int(hy), int(hx + size), int(hy))
         p.drawLine(int(hx), int(hy - size), int(hx), int(hy + size))
-        p.setPen(QPen(QColor("#58a6ff"), 1, Qt.PenStyle.DotLine))
+        p.setPen(QPen(QColor(c["head"]), 1, Qt.PenStyle.DotLine))
         p.drawEllipse(int(hx - 4), int(hy - 4), 8, 8)
 
         # Origin corner mark
         ox, oy = to_px(0, 0)
-        p.setPen(QPen(QColor("#3fb950"), 2))
+        p.setPen(QPen(QColor(c["origin"]), 2))
         p.drawLine(int(ox), int(oy), int(ox) + 12, int(oy))
         p.drawLine(int(ox), int(oy), int(ox), int(oy) + 12)
 

@@ -1074,6 +1074,24 @@ class MachinesPage(QWidget):
         cv = QVBoxLayout(canvas_widget)
         cv.setContentsMargins(0, 0, 0, 0); cv.setSpacing(0)
 
+        # Canvas toolbar — just the light/dark toggle
+        canvas_tb = QWidget()
+        canvas_tb.setFixedHeight(26)
+        canvas_tb.setStyleSheet("background:#010409; border-bottom:1px solid #21262d;")
+        tb_lay = QHBoxLayout(canvas_tb)
+        tb_lay.setContentsMargins(8, 0, 8, 0); tb_lay.setSpacing(0)
+        tb_lay.addStretch()
+        self._mode_btn = QPushButton("☀  Light mode")
+        self._mode_btn.setFixedHeight(20)
+        self._mode_btn.setStyleSheet(
+            "background:transparent; color:#6e7681; border:none;"
+            "font-size:10px; padding:0 4px;"
+        )
+        self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._mode_btn.clicked.connect(self._toggle_canvas_mode)
+        tb_lay.addWidget(self._mode_btn)
+        cv.addWidget(canvas_tb)
+
         self._canvas = BedPreview(400, 400)
         cv.addWidget(self._canvas, 1)
 
@@ -1115,6 +1133,21 @@ class MachinesPage(QWidget):
         root.addWidget(splitter, 1)
 
     # ------------------------------------------------------------------ machine select
+
+    def _toggle_canvas_mode(self):
+        self._canvas.toggle_mode()
+        if self._canvas._light_mode:
+            self._mode_btn.setText("🌙  Dark mode")
+            self._mode_btn.setStyleSheet(
+                "background:transparent; color:#e6edf3; border:none;"
+                "font-size:10px; padding:0 4px;"
+            )
+        else:
+            self._mode_btn.setText("☀  Light mode")
+            self._mode_btn.setStyleSheet(
+                "background:transparent; color:#6e7681; border:none;"
+                "font-size:10px; padding:0 4px;"
+            )
 
     def _on_machine_select(self, machine_id: int):
         self._selected_id = machine_id
