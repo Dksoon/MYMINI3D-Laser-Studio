@@ -31,6 +31,7 @@ installer/icon.ico
 config.json
 .env
 *.env
+.github_token
 
 # Microsoft Office temp files
 ~$*
