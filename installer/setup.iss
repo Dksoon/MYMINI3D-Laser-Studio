@@ -4,7 +4,7 @@
 ; =====================================================================
 
 #define AppName       "MYMINI3D Laser Studio"
-#define AppVersion    "2.0.8"
+#define AppVersion    "2.0.9"
 #define AppPublisher  "MYMINI3D"
 #define AppExeName    "MYMINI3D Laser Studio.exe"
 #define AppId         "{{A3F2C8D1-7B4E-4A9F-B6E2-1D5C8F3A2E91}"
