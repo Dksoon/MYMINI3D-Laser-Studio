@@ -22,10 +22,11 @@ from xml.etree import ElementTree as ET
 @dataclass
 class LayeredPath:
     """A polyline with its classified laser operation."""
-    operation: str                               # "cut" | "engrave" | "raster"
-    polyline:  list[tuple[float, float]]
-    stroke:    Optional[tuple] = None            # (r,g,b) or None
-    fill:      Optional[tuple] = None            # (r,g,b) or None
+    operation: str                                        # "cut" | "engrave" | "raster"
+    polyline:  list[tuple[float, float]]                  # primary polyline (first subpath)
+    stroke:    Optional[tuple] = None                     # (r,g,b) or None
+    fill:      Optional[tuple] = None                     # (r,g,b) or None
+    subpaths:  Optional[list[list[tuple[float, float]]]] = None  # all subpaths for compound raster
 
 # SVG namespace
 _NS = {"svg": "http://www.w3.org/2000/svg"}
@@ -139,12 +140,19 @@ def _walk(elem, ns: str, scale: float, ctm: tuple, polylines: list):
                  "metadata", "marker", "pattern", "style"):
         return
 
-    pts_raw = _elem_points_raw(elem, local)
-    if pts_raw and len(pts_raw) > 1:
-        # Apply CTM then convert to mm
-        pts_mm = [(_apply_m(m, x, y)[0] * scale,
-                   _apply_m(m, x, y)[1] * scale) for x, y in pts_raw]
-        polylines.append(pts_mm)
+    def _xform(pts_raw):
+        return [(_apply_m(m, x, y)[0] * scale, _apply_m(m, x, y)[1] * scale)
+                for x, y in pts_raw]
+
+    if local == "path":
+        # Split at every M command — eliminates travel lines between subpaths
+        for sp in _parse_path_subpaths(elem.get("d", "")):
+            if len(sp) >= 2:
+                polylines.append(_xform(sp))
+    else:
+        pts_raw = _elem_points_raw(elem, local)
+        if pts_raw and len(pts_raw) > 1:
+            polylines.append(_xform(pts_raw))
 
 
 def _svg_scale(root, ns: str) -> float:
@@ -238,20 +246,33 @@ def _ellipse_pts(cx, cy, rx, ry, steps=64):
 # SVG path `d` attribute parser
 # ─────────────────────────────────────────────────────────────────────
 
-def _parse_path_d(d: str) -> list[tuple[float, float]]:
-    """Parse SVG path d attribute → list of (x,y) points."""
-    pts: list[tuple[float, float]] = []
+def _parse_path_subpaths(d: str) -> list[list[tuple[float, float]]]:
+    """
+    Parse SVG path d attribute → list of subpaths.
+
+    Each 'M' moveto command starts a NEW subpath — travel lines between
+    subpaths are eliminated.  'Z' closes the current subpath and saves it.
+    This is the correct way to handle multi-letter / multi-shape paths.
+    """
+    subpaths: list[list[tuple[float, float]]] = []
+    cur:      list[tuple[float, float]]       = []
+
     tokens = _tokenize_path(d)
     idx = 0
-    cx, cy = 0.0, 0.0   # current position
-    sx, sy = 0.0, 0.0   # last cubic bezier control point (for S)
-    qx, qy = 0.0, 0.0   # last quadratic control point (for T)
+    cx, cy = 0.0, 0.0
+    sx, sy = 0.0, 0.0
+    qx, qy = 0.0, 0.0
     start_x, start_y = 0.0, 0.0
     cmd = "M"
 
     def n():
         nonlocal idx
         v = float(tokens[idx]); idx += 1; return v
+
+    def _flush():
+        if len(cur) >= 2:
+            subpaths.append(list(cur))
+        cur.clear()
 
     while idx < len(tokens):
         t = tokens[idx]
@@ -264,66 +285,78 @@ def _parse_path_d(d: str) -> list[tuple[float, float]]:
 
         try:
             if cmd in "Mm":
+                _flush()                               # save previous subpath
                 x = (cx if rel else 0) + n()
                 y = (cy if rel else 0) + n()
                 cx, cy = x, y; start_x, start_y = x, y
-                pts.append((cx, cy))
+                cur.append((cx, cy))
                 cmd = "l" if rel else "L"
 
             elif cmd in "Ll":
                 x = (cx if rel else 0) + n()
                 y = (cy if rel else 0) + n()
-                cx, cy = x, y; pts.append((cx, cy))
+                cx, cy = x, y; cur.append((cx, cy))
 
             elif cmd in "Hh":
-                x = (cx if rel else 0) + n()
-                cx = x; pts.append((cx, cy))
+                cx = (cx if rel else 0) + n()
+                cur.append((cx, cy))
 
             elif cmd in "Vv":
-                y = (cy if rel else 0) + n()
-                cy = y; pts.append((cx, cy))
+                cy = (cy if rel else 0) + n()
+                cur.append((cx, cy))
 
             elif cmd in "Cc":
                 x1=(cx if rel else 0)+n(); y1=(cy if rel else 0)+n()
                 x2=(cx if rel else 0)+n(); y2=(cy if rel else 0)+n()
                 ex=(cx if rel else 0)+n(); ey=(cy if rel else 0)+n()
                 seg = _cubic_bezier(cx,cy,x1,y1,x2,y2,ex,ey)
-                pts.extend(seg[1:]); sx,sy=x2,y2; cx,cy=ex,ey
+                cur.extend(seg[1:]); sx,sy=x2,y2; cx,cy=ex,ey
 
             elif cmd in "Ss":
                 x1=2*cx-sx; y1=2*cy-sy
                 x2=(cx if rel else 0)+n(); y2=(cy if rel else 0)+n()
                 ex=(cx if rel else 0)+n(); ey=(cy if rel else 0)+n()
                 seg=_cubic_bezier(cx,cy,x1,y1,x2,y2,ex,ey)
-                pts.extend(seg[1:]); sx,sy=x2,y2; cx,cy=ex,ey
+                cur.extend(seg[1:]); sx,sy=x2,y2; cx,cy=ex,ey
 
             elif cmd in "Qq":
                 x1=(cx if rel else 0)+n(); y1=(cy if rel else 0)+n()
                 ex=(cx if rel else 0)+n(); ey=(cy if rel else 0)+n()
                 seg=_quadratic_bezier(cx,cy,x1,y1,ex,ey)
-                pts.extend(seg[1:]); qx,qy=x1,y1; cx,cy=ex,ey
+                cur.extend(seg[1:]); qx,qy=x1,y1; cx,cy=ex,ey
 
             elif cmd in "Tt":
                 x1=2*cx-qx; y1=2*cy-qy
                 ex=(cx if rel else 0)+n(); ey=(cy if rel else 0)+n()
                 seg=_quadratic_bezier(cx,cy,x1,y1,ex,ey)
-                pts.extend(seg[1:]); qx,qy=x1,y1; cx,cy=ex,ey
+                cur.extend(seg[1:]); qx,qy=x1,y1; cx,cy=ex,ey
 
             elif cmd in "Aa":
                 rx_a=abs(n()); ry_a=abs(n())
                 x_rot=n(); laf=int(n()); sf=int(n())
                 ex=(cx if rel else 0)+n(); ey=(cy if rel else 0)+n()
                 arc_pts = _arc_to_pts(cx, cy, rx_a, ry_a, x_rot, laf, sf, ex, ey)
-                pts.extend(arc_pts[1:])
+                cur.extend(arc_pts[1:])
                 cx, cy = ex, ey
 
             elif cmd in "Zz":
-                pts.append((start_x, start_y)); cx,cy=start_x,start_y
+                cur.append((start_x, start_y))
+                cx, cy = start_x, start_y
+                _flush()                               # save closed subpath
 
         except (IndexError, ValueError):
             break
 
-    return pts
+    _flush()   # save any remaining open subpath
+    return subpaths
+
+
+def _parse_path_d(d: str) -> list[tuple[float, float]]:
+    """Legacy flat parser — kept for callers that need a single point list."""
+    result = []
+    for sp in _parse_path_subpaths(d):
+        result.extend(sp)
+    return result
 
 
 def _arc_to_pts(x1, y1, rx, ry, phi_deg, large_arc, sweep, x2, y2) -> list[tuple]:
@@ -605,17 +638,47 @@ def _walk_layered(elem, ns, scale, ctm, par_stroke, par_fill, results):
                  "metadata", "marker", "pattern", "style"):
         return
 
-    pts_raw = _elem_points_raw(elem, local)
-    if pts_raw and len(pts_raw) > 1:
-        pts_mm = [
-            (_apply_m(m, x, y)[0] * scale, _apply_m(m, x, y)[1] * scale)
-            for x, y in pts_raw
-        ]
-        op = _classify(stroke, fill)
-        results.append(LayeredPath(
-            operation=op, polyline=pts_mm,
-            stroke=stroke, fill=fill,
-        ))
+    def _xform_layered(pts_raw):
+        return [(_apply_m(m, x, y)[0] * scale, _apply_m(m, x, y)[1] * scale)
+                for x, y in pts_raw]
+
+    op = _classify(stroke, fill)
+
+    if local == "path":
+        all_subs = _parse_path_subpaths(elem.get("d", ""))
+        if not all_subs:
+            return
+
+        if op == "raster":
+            # Keep ALL subpaths as one compound path.
+            # BedPreview will render with even-odd fill rule so letter holes stay white.
+            xformed = [_xform_layered(sp) for sp in all_subs if len(sp) >= 2]
+            # Ensure each subpath is closed
+            closed = []
+            for sp in xformed:
+                if sp[0] != sp[-1]:
+                    sp = sp + [sp[0]]
+                closed.append(sp)
+            if closed:
+                results.append(LayeredPath(
+                    operation="raster", polyline=closed[0],
+                    subpaths=closed, stroke=stroke, fill=fill,
+                ))
+        else:
+            # Cut / engrave: each subpath is a separate vector path (no travel lines)
+            for sp in all_subs:
+                if len(sp) >= 2:
+                    results.append(LayeredPath(
+                        operation=op, polyline=_xform_layered(sp),
+                        stroke=stroke, fill=fill,
+                    ))
+    else:
+        pts_raw = _elem_points_raw(elem, local)
+        if pts_raw and len(pts_raw) > 1:
+            results.append(LayeredPath(
+                operation=op, polyline=_xform_layered(pts_raw),
+                stroke=stroke, fill=fill,
+            ))
 
 
 # ─────────────────────────────────────────────────────────────────────

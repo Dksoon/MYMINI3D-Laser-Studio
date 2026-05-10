@@ -178,18 +178,24 @@ class BedPreview(QWidget):
                 if len(poly) < 2:
                     continue
 
-                if lp.operation == "raster" and len(poly) >= 3:
-                    # Draw raster as FILLED shape (like K40W solid black preview)
-                    pts = [QPointF(*to_px(*pt)) for pt in poly]
+                if lp.operation == "raster":
+                    # Draw raster as filled compound shape with even-odd fill rule.
+                    # Even-odd rule: inner subpaths (letter holes like A,D,O) stay transparent.
+                    subs = lp.subpaths if lp.subpaths else [poly]
                     path = QPainterPath()
-                    path.moveTo(pts[0])
-                    for pt in pts[1:]:
-                        path.lineTo(pt)
-                    path.closeSubpath()
-                    fill_col = QColor(clr)
-                    fill_col.setAlpha(210)
-                    p.setPen(Qt.PenStyle.NoPen)
-                    p.fillPath(path, QBrush(fill_col))
+                    path.setFillRule(Qt.FillRule.OddEvenFill)
+                    for sp in subs:
+                        pts = [QPointF(*to_px(*pt)) for pt in sp]
+                        if len(pts) >= 3:
+                            path.moveTo(pts[0])
+                            for pt in pts[1:]:
+                                path.lineTo(pt)
+                            path.closeSubpath()
+                    if not path.isEmpty():
+                        fill_col = QColor(clr)
+                        fill_col.setAlpha(220)
+                        p.setPen(Qt.PenStyle.NoPen)
+                        p.fillPath(path, QBrush(fill_col))
                 else:
                     # Draw cut/engrave as vector lines
                     pen = QPen(QColor(clr), 1)
