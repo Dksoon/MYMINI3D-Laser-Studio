@@ -4,7 +4,7 @@
 ; =====================================================================
 
 #define AppName       "MYMINI3D Laser Studio"
-#define AppVersion    "2.0.6"
+#define AppVersion    "2.0.7"
 #define AppPublisher  "MYMINI3D"
 #define AppExeName    "MYMINI3D Laser Studio.exe"
 #define AppId         "{{A3F2C8D1-7B4E-4A9F-B6E2-1D5C8F3A2E91}"
@@ -16,9 +16,9 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} v{#AppVersion}
 AppPublisher={#AppPublisher}
-AppPublisherURL=https://github.com/MYMINI3D/laser-studio
-AppSupportURL=https://github.com/MYMINI3D/laser-studio/issues
-AppUpdatesURL=https://github.com/MYMINI3D/laser-studio/releases
+AppPublisherURL=https://github.com/Dksoon/MYMINI3D-Laser-Studio
+AppSupportURL=https://github.com/Dksoon/MYMINI3D-Laser-Studio/issues
+AppUpdatesURL=https://github.com/Dksoon/MYMINI3D-Laser-Studio/releases
 
 ; Require admin — needed for Program Files install and pnputil driver install
 PrivilegesRequired=admin

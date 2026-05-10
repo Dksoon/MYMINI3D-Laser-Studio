@@ -49,7 +49,7 @@ _defaults = {
     "gdrive_enabled": False,
     "gdrive_folder_id": "",
     "gdrive_credentials_path": "",
-    "update_url": "https://github.com/MYMINI3D/releases/latest",
+    "update_url": "",
     "update_check_on_start": True,
     "laser_bed_width_mm": 400,
     "laser_bed_height_mm": 400,
@@ -69,6 +69,9 @@ def load_config() -> dict:
                 data = json.load(f)
             for k, v in _defaults.items():
                 data.setdefault(k, v)
+            # Clear old wrong update URL so update_service uses the correct hardcoded one
+            if "MYMINI3D/releases" in data.get("update_url", ""):
+                data["update_url"] = ""
             return data
         except Exception:
             pass
