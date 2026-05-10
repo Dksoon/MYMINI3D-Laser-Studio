@@ -15,9 +15,9 @@ GITHUB_API = "https://api.github.com/repos/Dksoon/MYMINI3D-Laser-Studio/releases
 def _parse_version(v: str) -> tuple:
     try:
         from packaging.version import Version
-        return Version(v.lstrip("v"))
+        return Version(v.lstrip("vV"))
     except Exception:
-        return tuple(int(x) for x in v.lstrip("v").split(".") if x.isdigit())
+        return tuple(int(x) for x in v.lstrip("vV").split(".") if x.isdigit())
 
 
 class UpdateService:
@@ -54,7 +54,7 @@ class UpdateService:
             with urllib.request.urlopen(req, timeout=10) as r:
                 data = json.loads(r.read())
 
-            latest_tag = data.get("tag_name", "").lstrip("v")
+            latest_tag = data.get("tag_name", "").lstrip("vV")
             if not latest_tag:
                 if on_result: on_result(False, __version__, "")
                 return
