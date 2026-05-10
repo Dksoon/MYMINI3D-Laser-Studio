@@ -708,6 +708,7 @@ class ControlPanel(QWidget):
         job = LaserJob(
             machine_id=self._machine_id, file_path=self._file_path,
             settings=settings, trace_only=trace_only,
+            mode=mode if not trace_only else "cut",
             on_progress=_prog, on_done=_done,
         )
         self._active_job = job; job.start()

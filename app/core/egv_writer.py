@@ -202,3 +202,94 @@ def bounding_box_egv(
     speed_mm_s: float = 30.0,
 ) -> bytes:
     return EGVWriter(speed_mm_s, trace_only=True).trace_bounding_box(polylines).build()
+
+
+# ── Raster (scanline) engrave ─────────────────────────────────────────
+
+def _scanline_intersections(polylines: list, y: float) -> list[float]:
+    """
+    Ray-casting: find all X positions where horizontal line Y
+    crosses the boundaries of the given closed polylines.
+    """
+    xs: list[float] = []
+    for poly in polylines:
+        n = len(poly)
+        for i in range(n - 1):
+            x1, y1 = poly[i]
+            x2, y2 = poly[i + 1]
+            if y1 == y2:
+                continue                    # horizontal edge — skip
+            if (y1 <= y < y2) or (y2 <= y < y1):
+                t  = (y - y1) / (y2 - y1)
+                xs.append(x1 + t * (x2 - x1))
+    xs.sort()
+    return xs
+
+
+def raster_to_egv(
+    polylines:        list[list[tuple[float, float]]],
+    speed_mm_s:       float = 200.0,
+    scanline_step_mm: float = 0.127,    # 0.005 inch — K40W default
+    bottom_up:        bool  = False,
+) -> bytes:
+    """
+    Generate raster engrave EGV from filled/closed shape polylines.
+    Uses horizontal boustrophedon scan (alternates L→R / R→L per row).
+    K40 Whisperer compatible scanline fill algorithm.
+    """
+    all_pts = [pt for poly in polylines for pt in poly]
+    if not all_pts:
+        return b""
+
+    min_x = min(p[0] for p in all_pts)
+    max_x = max(p[0] for p in all_pts)
+    min_y = min(p[1] for p in all_pts)
+    max_y = max(p[1] for p in all_pts)
+
+    # Build Y scan positions
+    y_vals: list[float] = []
+    y = min_y
+    while y <= max_y + scanline_step_mm * 0.5:
+        y_vals.append(y)
+        y += scanline_step_mm
+    if bottom_up:
+        y_vals = list(reversed(y_vals))
+
+    writer  = EGVWriter(speed_mm_s=speed_mm_s)
+    writer._write_header()
+    has_any = False
+    ltr     = True      # left-to-right flag; alternates each row
+
+    for y in y_vals:
+        xs = _scanline_intersections(polylines, y)
+        if len(xs) < 2:
+            continue
+
+        # Build fill segments from intersection pairs
+        segs: list[tuple[float, float]] = []
+        for i in range(0, len(xs) - 1, 2):
+            x0 = max(min_x, xs[i])
+            x1 = min(max_x, xs[i + 1])
+            if x1 > x0 + 1e-4:
+                segs.append((x0, x1))
+
+        if not segs:
+            continue
+
+        has_any = True
+        if not ltr:
+            segs = [(b, a) for a, b in reversed(segs)]
+
+        for x_start, x_end in segs:
+            writer._move_to(x_start, y)
+            writer._buf.append(LASER_ON)
+            writer._line_to(x_end, y)
+            writer._buf.append(LASER_OFF)
+
+        ltr = not ltr   # flip direction for next row
+
+    if not has_any:
+        return b""
+
+    writer._write_footer()
+    return writer.build()

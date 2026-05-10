@@ -1,14 +1,31 @@
 """
-SVG / DXF → list of polylines (mm coordinates).
-Each polyline is a list of (x, y) float tuples.
-Handles: paths, lines, rects, circles, polylines, polygons.
-Flattens all curves to line segments (tolerance 0.1 mm).
+SVG / DXF → list of polylines (mm coordinates), with laser operation classification.
+
+K40 Whisperer color rules (matched exactly):
+  Red stroke   #FF0000 ±tolerance  → Vector Cut
+  Blue stroke  #0000FF ±tolerance  → Vector Engrave
+  Non-white fill (any dark fill)   → Raster Engrave
+  Default (no recognised colour)   → Vector Cut
 """
 from __future__ import annotations
 import math
 import re
-from typing import Iterator
+from dataclasses import dataclass, field
+from typing import Iterator, Optional
 from xml.etree import ElementTree as ET
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layered path — polyline + laser operation type
+# ─────────────────────────────────────────────────────────────────────
+
+@dataclass
+class LayeredPath:
+    """A polyline with its classified laser operation."""
+    operation: str                               # "cut" | "engrave" | "raster"
+    polyline:  list[tuple[float, float]]
+    stroke:    Optional[tuple] = None            # (r,g,b) or None
+    fill:      Optional[tuple] = None            # (r,g,b) or None
 
 # SVG namespace
 _NS = {"svg": "http://www.w3.org/2000/svg"}
@@ -470,3 +487,197 @@ def _dxf_entity_to_pts(e) -> list[tuple[float, float]]:
     except Exception:
         pass
     return []
+
+
+# ═════════════════════════════════════════════════════════════════════
+# LAYER CLASSIFICATION  (K40 Whisperer colour rules)
+# ═════════════════════════════════════════════════════════════════════
+
+_NAMED_COLORS: dict[str, Optional[tuple]] = {
+    "red":         (255,   0,   0),
+    "lime":        (  0, 255,   0),
+    "green":       (  0, 128,   0),
+    "blue":        (  0,   0, 255),
+    "black":       (  0,   0,   0),
+    "white":       (255, 255, 255),
+    "none":        None,
+    "transparent": None,
+}
+
+
+def _parse_svg_color(s: str) -> Optional[tuple[int, int, int]]:
+    """Parse any SVG colour string → (r,g,b) or None."""
+    if not s:
+        return None
+    s = s.strip().lower()
+    if s in _NAMED_COLORS:
+        return _NAMED_COLORS[s]
+    if s.startswith("#"):
+        h = s[1:]
+        if len(h) == 3:
+            h = h[0]*2 + h[1]*2 + h[2]*2
+        if len(h) == 6:
+            try:
+                return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+            except ValueError:
+                pass
+    m = re.match(r'rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)', s)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return None
+
+
+def _parse_style(style: str) -> dict[str, str]:
+    """Parse a CSS-style attribute string → {property: value}."""
+    result: dict[str, str] = {}
+    for part in style.split(";"):
+        if ":" in part:
+            k, v = part.split(":", 1)
+            result[k.strip().lower()] = v.strip()
+    return result
+
+
+def _elem_colors(elem, parent_stroke=None, parent_fill=None):
+    """Return effective (stroke_rgb, fill_rgb) for an element."""
+    stroke_str = elem.get("stroke") or ""
+    fill_str   = elem.get("fill")   or ""
+
+    style_str = elem.get("style") or ""
+    if style_str:
+        smap = _parse_style(style_str)
+        if "stroke" in smap:
+            stroke_str = smap["stroke"]
+        if "fill" in smap:
+            fill_str   = smap["fill"]
+
+    stroke = _parse_svg_color(stroke_str) if stroke_str else parent_stroke
+    fill   = _parse_svg_color(fill_str)   if fill_str   else parent_fill
+    return stroke, fill
+
+
+def _classify(stroke, fill) -> str:
+    """
+    K40 Whisperer colour classification:
+      Red stroke   → cut
+      Blue stroke  → engrave
+      Non-white fill → raster
+      Default      → cut
+    """
+    if stroke:
+        r, g, b = stroke
+        if r > 200 and g < 50 and b < 50:
+            return "cut"
+        if r < 50 and g < 50 and b > 200:
+            return "engrave"
+
+    if fill:
+        r, g, b = fill
+        if not (r > 200 and g > 200 and b > 200):   # not white
+            return "raster"
+
+    return "cut"   # default: treat as vector cut
+
+
+def _walk_layered(elem, ns, scale, ctm, par_stroke, par_fill, results):
+    """Recursively walk SVG tree, collecting LayeredPath objects."""
+    local = elem.tag.replace(ns, "")
+
+    t_str = elem.get("transform", "")
+    m = _mat_mul(ctm, _parse_transform(t_str)) if t_str else ctm
+
+    stroke, fill = _elem_colors(elem, par_stroke, par_fill)
+
+    if local in ("g", "svg", "a", "symbol"):
+        for child in elem:
+            _walk_layered(child, ns, scale, m, stroke, fill, results)
+        return
+
+    if local in ("defs", "namedview", "desc", "title",
+                 "metadata", "marker", "pattern", "style"):
+        return
+
+    pts_raw = _elem_points_raw(elem, local)
+    if pts_raw and len(pts_raw) > 1:
+        pts_mm = [
+            (_apply_m(m, x, y)[0] * scale, _apply_m(m, x, y)[1] * scale)
+            for x, y in pts_raw
+        ]
+        op = _classify(stroke, fill)
+        results.append(LayeredPath(
+            operation=op, polyline=pts_mm,
+            stroke=stroke, fill=fill,
+        ))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Public: file → classified paths
+# ─────────────────────────────────────────────────────────────────────
+
+def file_to_layered_paths(file_path: str) -> list[LayeredPath]:
+    """
+    Parse SVG or DXF → list of LayeredPath objects, each classified as:
+      'cut'     – red stroke  – Vector Cut
+      'engrave' – blue stroke – Vector Engrave
+      'raster'  – filled shape – Raster Engrave
+    """
+    ext = file_path.lower().rsplit(".", 1)[-1]
+    if ext == "svg":
+        return _svg_layered(file_path)
+    elif ext == "dxf":
+        return _dxf_layered(file_path)
+    return []
+
+
+def _svg_layered(svg_path: str) -> list[LayeredPath]:
+    tree = ET.parse(svg_path)
+    root = tree.getroot()
+
+    ns = ""
+    tag = root.tag
+    if tag.startswith("{"):
+        ns = tag.split("}")[0] + "}"
+
+    scale   = _svg_scale(root, ns)
+    results: list[LayeredPath] = []
+    _walk_layered(root, ns, scale, _IDENTITY, None, None, results)
+
+    # Ensure raster paths are closed (required by scanline fill algorithm)
+    for lp in results:
+        if lp.operation == "raster" and len(lp.polyline) >= 2:
+            if lp.polyline[0] != lp.polyline[-1]:
+                lp.polyline = lp.polyline + [lp.polyline[0]]
+
+    return [lp for lp in results if len(lp.polyline) >= 2]
+
+
+def _dxf_layered(dxf_path: str) -> list[LayeredPath]:
+    """
+    DXF classification (K40 Whisperer rules):
+      ACI colour 5 (blue) → engrave
+      Layer name contains 'engrave' → engrave
+      Everything else → cut
+    """
+    try:
+        import ezdxf
+        doc = ezdxf.readfile(dxf_path)
+        msp = doc.modelspace()
+        results: list[LayeredPath] = []
+        for entity in msp:
+            pts = _dxf_entity_to_pts(entity)
+            if not pts or len(pts) < 2:
+                continue
+            op = "cut"
+            try:
+                if entity.dxf.color == 5:
+                    op = "engrave"
+            except Exception:
+                pass
+            try:
+                if "engrave" in entity.dxf.layer.lower():
+                    op = "engrave"
+            except Exception:
+                pass
+            results.append(LayeredPath(operation=op, polyline=pts))
+        return results
+    except Exception:
+        return []

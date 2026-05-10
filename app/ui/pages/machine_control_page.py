@@ -23,7 +23,7 @@ from app.core.laser_job import (
     LaserJob, CutSettings, cmd_home, cmd_unlock,
     cmd_initialize, cmd_jog, cmd_move_to, cmd_stop
 )
-from app.core.svg_to_path import file_to_polylines
+from app.core.svg_to_path import file_to_polylines, file_to_layered_paths, LayeredPath
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -33,28 +33,31 @@ from app.core.svg_to_path import file_to_polylines
 class BedPreview(QWidget):
     """Visual preview of the laser bed with the loaded design overlaid."""
 
+    # Colour map: operation → display colour (matches K40 Whisperer convention)
+    _OP_COLORS = {
+        "cut":     QColor("#ff4444"),   # red   — Vector Cut
+        "engrave": QColor("#4499ff"),   # blue  — Vector Engrave
+        "raster":  QColor("#8b949e"),   # grey  — Raster Engrave
+    }
+
     def __init__(self, bed_w: float = 400.0, bed_h: float = 400.0, parent=None):
         super().__init__(parent)
-        self.bed_w      = bed_w
-        self.bed_h      = bed_h
-        self._polylines: list[list[tuple[float, float]]] = []
-        self._svg_path  = ""
-        self._head_x    = 0.0
-        self._head_y    = 0.0
+        self.bed_w     = bed_w
+        self.bed_h     = bed_h
+        self._layered: list[LayeredPath] = []
+        self._svg_path = ""
+        self._head_x   = 0.0
+        self._head_y   = 0.0
         self.setMinimumSize(360, 360)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setStyleSheet("background:#0d1117;")
-        self._renderer: Optional[QSvgRenderer] = None
 
     def load_file(self, file_path: str):
-        self._svg_path  = file_path
-        self._polylines = file_to_polylines(file_path)
-        # Try SVG renderer for native preview
-        self._renderer  = None
-        if SVG_AVAILABLE and file_path.lower().endswith(".svg"):
-            r = QSvgRenderer(file_path)
-            if r.isValid():
-                self._renderer = r
+        self._svg_path = file_path
+        try:
+            self._layered = file_to_layered_paths(file_path)
+        except Exception:
+            self._layered = []
         self.update()
 
     def set_head_position(self, x: float, y: float):
@@ -118,16 +121,36 @@ class BedPreview(QWidget):
             _, py = to_px(0, y)
             p.drawText(int(bx) - 30, int(py) + 4, f"{y}")
 
-        # Draw design paths (polylines)
-        if self._polylines:
-            p.setPen(QPen(QColor("#f78166"), 1))
-            for poly in self._polylines:
+        # Draw design paths — colour coded by operation type
+        # Red = Vector Cut  |  Blue = Vector Engrave  |  Grey = Raster
+        if self._layered:
+            for lp in self._layered:
+                color = self._OP_COLORS.get(lp.operation, QColor("#f78166"))
+                pen = QPen(color, 1)
+                if lp.operation == "raster":
+                    pen.setStyle(Qt.PenStyle.DotLine)
+                p.setPen(pen)
+                poly = lp.polyline
                 if len(poly) < 2:
                     continue
                 for i in range(len(poly) - 1):
                     x1, y1 = to_px(*poly[i])
                     x2, y2 = to_px(*poly[i + 1])
                     p.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+        # Legend — bottom-left of bed
+        legend = [("Cut", "#ff4444"), ("Engrave", "#4499ff"), ("Raster", "#8b949e")]
+        try:
+            from PyQt6.QtGui import QFont as _QF
+            lf = _QF(); lf.setPointSize(7); p.setFont(lf)
+        except Exception:
+            pass
+        lx = int(bx) + 4
+        ly = int(by + bh) - 4
+        for label, clr in legend:
+            p.setPen(QPen(QColor(clr), 1))
+            p.drawText(lx, ly, f"■ {label}")
+            lx += 58
 
         # Head position crosshair
         hx, hy = to_px(self._head_x, self._head_y)

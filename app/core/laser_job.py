@@ -8,8 +8,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from app.core.svg_to_path      import file_to_polylines
-from app.core.egv_writer       import polylines_to_egv, bounding_box_egv, EGVWriter
+from app.core.svg_to_path      import file_to_polylines, file_to_layered_paths
+from app.core.egv_writer       import polylines_to_egv, bounding_box_egv, raster_to_egv, EGVWriter
 from app.core.laser_driver     import machine_manager, K40Driver
 from app.core.design_transform import apply_transforms, translate_to_origin
 
@@ -54,6 +54,7 @@ class LaserJob:
         file_path:  str,
         settings:   CutSettings,
         trace_only: bool = False,
+        mode:       str  = "cut",   # "cut" | "engrave" | "raster"
         on_progress: Optional[Callable[[float, str], None]] = None,
         on_done:     Optional[Callable[[bool, str], None]]  = None,
     ):
@@ -61,6 +62,7 @@ class LaserJob:
         self.file_path   = file_path
         self.settings    = settings
         self.trace_only  = trace_only
+        self.mode        = mode
         self.on_progress = on_progress
         self.on_done     = on_done
         self.state       = JobState()
@@ -87,87 +89,118 @@ class LaserJob:
         t_start = time.time()
 
         def progress(pct: float, msg: str):
-            self.state.progress = pct
+            self.state.progress  = pct
             self.state.elapsed_s = time.time() - t_start
             if self.on_progress:
                 self.on_progress(pct, msg)
 
         try:
-            # 1 — Parse file
+            # 1 — Parse file with layer classification
             progress(2, "Reading file…")
-            polylines = file_to_polylines(self.file_path)
-            if not polylines:
-                raise RuntimeError("No cuttable paths found in file.")
+            layered = file_to_layered_paths(self.file_path)
+            if not layered:
+                raise RuntimeError("No paths found in file.")
 
-            progress(8, f"Parsed {len(polylines)} path(s)")
+            progress(8, f"Parsed {len(layered)} path(s)")
 
-            # 2 — Apply design transforms (mirror/rotate/scale from machine settings)
-            progress(10, "Applying design transforms…")
+            # 2 — Apply machine transforms (mirror / rotate / scale)
+            progress(10, "Applying transforms…")
             from app.core.database import get_session, Machine
             bed_w, bed_h = 400.0, 400.0
-            mirror_x = mirror_y = rotate_90 = False
+            mirror_x = rotate_90 = False
             x_scale = y_scale = 1.0
             if self.machine_id:
                 with get_session() as s:
                     m = s.get(Machine, self.machine_id)
                     if m:
-                        bed_w    = m.bed_width_mm   or 400.0
-                        bed_h    = m.bed_height_mm  or 400.0
-                        mirror_x = bool(m.mirror_design)
-                        mirror_y = False   # separate mirror_y not in K40W UI yet
-                        rotate_90= bool(m.rotate_design)
-                        x_scale  = m.x_scale_factor or 1.0
-                        y_scale  = m.y_scale_factor or 1.0
+                        bed_w     = m.bed_width_mm   or 400.0
+                        bed_h     = m.bed_height_mm  or 400.0
+                        mirror_x  = bool(m.mirror_design)
+                        rotate_90 = bool(m.rotate_design)
+                        x_scale   = m.x_scale_factor or 1.0
+                        y_scale   = m.y_scale_factor or 1.0
 
-            polylines = apply_transforms(
-                polylines, bed_w, bed_h,
-                mirror_x=mirror_x, mirror_y=mirror_y,
+            all_polys = [lp.polyline for lp in layered]
+            all_polys = apply_transforms(
+                all_polys, bed_w, bed_h,
+                mirror_x=mirror_x, mirror_y=False,
                 rotate_90=rotate_90,
                 x_scale=x_scale, y_scale=y_scale,
             )
-            # Always translate so design starts at (0,0) — prevents off-bed cuts
-            polylines = translate_to_origin(polylines)
+            all_polys = translate_to_origin(all_polys)
+            for lp, poly in zip(layered, all_polys):
+                lp.polyline = poly
 
-            # 3 — Generate EGV
+            # 3 — Build EGV for the selected mode
             progress(12, "Generating laser commands…")
-            speed = self.settings.speed_cut_mm_s
+
             if self.trace_only:
-                egv_data = bounding_box_egv(polylines, speed_mm_s=30.0)
+                egv_data = bounding_box_egv(all_polys, speed_mm_s=30.0)
+                progress(18, f"Trace ready ({len(egv_data):,} bytes)")
+
             else:
-                egv_data = polylines_to_egv(
-                    polylines, speed_mm_s=speed
-                )
+                # Filter paths matching the current mode
+                target = [lp.polyline for lp in layered if lp.operation == self.mode]
 
-            progress(18, f"Commands ready ({len(egv_data):,} bytes)")
+                if not target:
+                    # SVG has no colour coding — treat all paths as the selected mode
+                    target = all_polys
 
-            # 3 — Get driver
+                if self.mode == "raster":
+                    egv_data = raster_to_egv(
+                        target,
+                        speed_mm_s=self.settings.speed_raster_mm_s,
+                        scanline_step_mm=0.127,
+                    )
+                elif self.mode == "engrave":
+                    egv_data = polylines_to_egv(
+                        target, speed_mm_s=self.settings.speed_vector_mm_s
+                    )
+                else:   # "cut" (default)
+                    egv_data = polylines_to_egv(
+                        target, speed_mm_s=self.settings.speed_cut_mm_s
+                    )
+
+                if not egv_data:
+                    raise RuntimeError(
+                        f"No '{self.mode}' paths in this file.\n"
+                        "SVG colour guide:  Red stroke = Cut | "
+                        "Blue stroke = Engrave | Dark fill = Raster"
+                    )
+
+                mode_labels = {"cut": "Cut", "engrave": "Engrave", "raster": "Raster"}
+                progress(18, f"{mode_labels.get(self.mode, self.mode)} ready "
+                             f"({len(egv_data):,} bytes, {len(target)} path(s))")
+
+            # 4 — Get driver
             drv = machine_manager._drivers.get(self.machine_id)
             if not drv or not drv.is_connected:
-                raise RuntimeError("Machine is not connected. Go to Machines → Connect first.")
+                raise RuntimeError(
+                    "Machine is not connected.\n"
+                    "Go to Machines → Connect first."
+                )
 
-            # 4 — Send passes
+            # 5 — Send (with multi-pass support)
             for pass_num in range(self.settings.passes):
                 if self.state.aborted:
                     break
-                pass_label = f"Pass {pass_num+1}/{self.settings.passes}" \
-                             if self.settings.passes > 1 else ""
+                pass_label = (f"Pass {pass_num+1}/{self.settings.passes} "
+                              if self.settings.passes > 1 else "")
 
                 def _progress_cb(pct: float):
                     base = 18 + (pass_num / self.settings.passes) * 80
                     span = 80 / self.settings.passes
                     progress(base + pct * span / 100,
-                             f"{pass_label} Sending… {pct:.0f}%")
+                             f"{pass_label}Sending… {pct:.0f}%")
 
                 drv.send_file_raw(egv_data, on_progress=_progress_cb)
-
-                # Wait until machine is idle
                 _wait_idle(drv, timeout=300)
 
             if self.state.aborted:
                 self._finish(False, "Job cancelled.")
             else:
                 progress(100, "Done")
-                self._finish(True, "Cut completed successfully.")
+                self._finish(True, "Completed successfully.")
 
         except Exception as e:
             self.state.error = str(e)
