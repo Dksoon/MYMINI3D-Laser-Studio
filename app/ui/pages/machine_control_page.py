@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QSizePolicy, QMessageBox, QProgressBar
 )
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QTransform
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QTransform, QPainterPath, QPolygonF
 try:
     from PyQt6.QtSvgWidgets import QSvgWidget
     from PyQt6.QtSvg import QSvgRenderer
@@ -51,13 +51,16 @@ class BedPreview(QWidget):
 
     def __init__(self, bed_w: float = 400.0, bed_h: float = 400.0, parent=None):
         super().__init__(parent)
-        self.bed_w      = bed_w
-        self.bed_h      = bed_h
+        self.bed_w       = bed_w
+        self.bed_h       = bed_h
         self._layered: list[LayeredPath] = []
-        self._svg_path  = ""
-        self._head_x    = 0.0
-        self._head_y    = 0.0
+        self._svg_path   = ""
+        self._head_x     = 0.0
+        self._head_y     = 0.0
         self._light_mode = False
+        self._zoom       = 1.0
+        self._pan_x      = 0.0
+        self._pan_y      = 0.0
         self.setMinimumSize(360, 360)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setStyleSheet("background:#0d1117;")
@@ -66,6 +69,29 @@ class BedPreview(QWidget):
         self._light_mode = not self._light_mode
         bg = self._LIGHT["bg"] if self._light_mode else self._DARK["bg"]
         self.setStyleSheet(f"background:{bg};")
+        self.update()
+
+    # ── Zoom / pan ────────────────────────────────────────────────────
+
+    def wheelEvent(self, event):
+        """Zoom in/out centred on the mouse cursor position."""
+        mx = event.position().x()
+        my = event.position().y()
+        # World coord under cursor (pre-zoom screen space)
+        wx = (mx - self._pan_x) / self._zoom
+        wy = (my - self._pan_y) / self._zoom
+        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+        self._zoom = max(0.5, min(20.0, self._zoom * factor))
+        # Re-anchor so cursor stays on the same point
+        self._pan_x = mx - wx * self._zoom
+        self._pan_y = my - wy * self._zoom
+        self.update()
+
+    def mouseDoubleClickEvent(self, event):
+        """Double-click to reset zoom and pan."""
+        self._zoom  = 1.0
+        self._pan_x = 0.0
+        self._pan_y = 0.0
         self.update()
 
     def load_file(self, file_path: str):
@@ -90,7 +116,7 @@ class BedPreview(QWidget):
         # Background
         p.fillRect(0, 0, w, h, QColor(c["bg"]))
 
-        # Bed area
+        # Base bed layout (unzoomed)
         margin   = 20
         bed_px_w = w - 2 * margin
         bed_px_h = h - 2 * margin
@@ -98,30 +124,37 @@ class BedPreview(QWidget):
         off_x    = margin + (bed_px_w - self.bed_w * scale) / 2
         off_y    = margin + (bed_px_h - self.bed_h * scale) / 2
 
+        # to_px applies zoom + pan on top of base position
         def to_px(xmm, ymm):
-            return off_x + xmm * scale, off_y + ymm * scale
+            bsx = off_x + xmm * scale
+            bsy = off_y + ymm * scale
+            return bsx * self._zoom + self._pan_x, bsy * self._zoom + self._pan_y
 
         bx, by = to_px(0, 0)
-        bw     = self.bed_w * scale
-        bh     = self.bed_h * scale
+        bw     = self.bed_w  * scale * self._zoom
+        bh     = self.bed_h  * scale * self._zoom
+
+        # Clip drawing to canvas
+        p.setClipRect(0, 0, w, h)
 
         # Bed rectangle
         p.setPen(QPen(QColor(c["grid"]), 1))
         p.setBrush(QBrush(QColor(c["bed"])))
         p.drawRect(int(bx), int(by), int(bw), int(bh))
 
-        # Grid (every 50 mm)
+        # Grid (every 50 mm, skip if zoomed out too much)
+        grid_step = 50.0
         p.setPen(QPen(QColor(c["grid"]), 1, Qt.PenStyle.DotLine))
-        x = 50.0
+        x = grid_step
         while x < self.bed_w:
             px, _ = to_px(x, 0)
             p.drawLine(int(px), int(by), int(px), int(by + bh))
-            x += 50
-        y = 50.0
+            x += grid_step
+        y = grid_step
         while y < self.bed_h:
             _, py = to_px(0, y)
             p.drawLine(int(bx), int(py), int(bx + bw), int(py))
-            y += 50
+            y += grid_step
 
         # Grid labels
         p.setPen(QPen(QColor(c["labels"])))
@@ -141,19 +174,32 @@ class BedPreview(QWidget):
         if self._layered:
             for lp in self._layered:
                 clr = c.get(lp.operation, c["cut"])
-                pen = QPen(QColor(clr), 1)
-                if lp.operation == "raster":
-                    pen.setStyle(Qt.PenStyle.DotLine)
-                p.setPen(pen)
                 poly = lp.polyline
                 if len(poly) < 2:
                     continue
-                for i in range(len(poly) - 1):
-                    x1, y1 = to_px(*poly[i])
-                    x2, y2 = to_px(*poly[i + 1])
-                    p.drawLine(int(x1), int(y1), int(x2), int(y2))
 
-        # Legend — bottom-left of bed
+                if lp.operation == "raster" and len(poly) >= 3:
+                    # Draw raster as FILLED shape (like K40W solid black preview)
+                    pts = [QPointF(*to_px(*pt)) for pt in poly]
+                    path = QPainterPath()
+                    path.moveTo(pts[0])
+                    for pt in pts[1:]:
+                        path.lineTo(pt)
+                    path.closeSubpath()
+                    fill_col = QColor(clr)
+                    fill_col.setAlpha(210)
+                    p.setPen(Qt.PenStyle.NoPen)
+                    p.fillPath(path, QBrush(fill_col))
+                else:
+                    # Draw cut/engrave as vector lines
+                    pen = QPen(QColor(clr), 1)
+                    p.setPen(pen)
+                    for i in range(len(poly) - 1):
+                        x1, y1 = to_px(*poly[i])
+                        x2, y2 = to_px(*poly[i + 1])
+                        p.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+        # Legend — bottom-left of bed (always drawn at screen coords, not zoomed)
         legend = [("Cut", c["cut"]), ("Engrave", c["engrave"]), ("Raster", c["raster"])]
         try:
             from PyQt6.QtGui import QFont as _QF2
@@ -166,6 +212,16 @@ class BedPreview(QWidget):
             p.setPen(QPen(QColor(clr), 1))
             p.drawText(lx, ly, f"■ {label}")
             lx += 58
+
+        # Zoom indicator — top-right corner
+        if abs(self._zoom - 1.0) > 0.05:
+            p.setPen(QPen(QColor(c["labels"]), 1))
+            try:
+                from PyQt6.QtGui import QFont as _QF3
+                zf = _QF3(); zf.setPointSize(8); p.setFont(zf)
+            except Exception:
+                pass
+            p.drawText(w - 60, 18, f"{self._zoom:.1f}×  (dbl-click reset)")
 
         # Head position crosshair
         hx, hy = to_px(self._head_x, self._head_y)

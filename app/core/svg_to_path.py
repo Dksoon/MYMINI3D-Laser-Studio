@@ -558,10 +558,11 @@ def _elem_colors(elem, parent_stroke=None, parent_fill=None):
 def _classify(stroke, fill) -> str:
     """
     K40 Whisperer colour classification:
-      Red stroke   → cut
-      Blue stroke  → engrave
-      Non-white fill → raster
-      Default      → cut
+      Red stroke (#FF0000 ±tol)  → cut
+      Blue stroke (#0000FF ±tol) → engrave
+      Dark/non-white fill        → raster
+      White fill + no stroke     → ignore  (invisible mask, skip it)
+      Default                    → cut
     """
     if stroke:
         r, g, b = stroke
@@ -572,15 +573,23 @@ def _classify(stroke, fill) -> str:
 
     if fill:
         r, g, b = fill
-        if not (r > 200 and g > 200 and b > 200):   # not white
-            return "raster"
+        if r > 200 and g > 200 and b > 200:
+            return "ignore"   # white/near-white, no stroke → invisible
+        return "raster"       # any dark fill → raster engrave
 
-    return "cut"   # default: treat as vector cut
+    return "cut"   # default: uncoloured path → vector cut
 
 
 def _walk_layered(elem, ns, scale, ctm, par_stroke, par_fill, results):
     """Recursively walk SVG tree, collecting LayeredPath objects."""
     local = elem.tag.replace(ns, "")
+
+    # Skip hidden elements (display:none)
+    style_str = elem.get("style") or ""
+    if style_str:
+        smap_check = _parse_style(style_str)
+        if smap_check.get("display") == "none":
+            return
 
     t_str = elem.get("transform", "")
     m = _mat_mul(ctm, _parse_transform(t_str)) if t_str else ctm
@@ -647,7 +656,8 @@ def _svg_layered(svg_path: str) -> list[LayeredPath]:
             if lp.polyline[0] != lp.polyline[-1]:
                 lp.polyline = lp.polyline + [lp.polyline[0]]
 
-    return [lp for lp in results if len(lp.polyline) >= 2]
+    return [lp for lp in results
+            if len(lp.polyline) >= 2 and lp.operation != "ignore"]
 
 
 def _dxf_layered(dxf_path: str) -> list[LayeredPath]:
