@@ -1,5 +1,5 @@
 # =====================================================================
-# MYMINI3D Laser Studio — Full Build Script
+# MYMINI3D Laser Studio - Full Build Script
 # Run from project root:  .\build.ps1
 #
 # Prerequisites:
@@ -22,25 +22,25 @@ Write-Host ""
 
 Set-Location $ProjectRoot
 
-# ── Step 1: Install / update dependencies ────────────────────────────
+# -- Step 1: Install / update dependencies ----------------------------
 Write-Host "[1/5] Installing Python dependencies..." -ForegroundColor Yellow
 pip install -r requirements.txt --quiet
 if ($LASTEXITCODE -ne 0) { Write-Host "pip install failed" -ForegroundColor Red; exit 1 }
 Write-Host "      Done." -ForegroundColor Green
 
-# ── Step 2: Generate icon ─────────────────────────────────────────────
+# -- Step 2: Generate icon --------------------------------------------
 Write-Host "[2/5] Generating app icon..." -ForegroundColor Yellow
 python scripts/generate_icon.py
 if ($LASTEXITCODE -ne 0) { Write-Host "Icon generation failed" -ForegroundColor Red; exit 1 }
 Write-Host "      Done." -ForegroundColor Green
 
-# ── Step 3: Clean previous build ─────────────────────────────────────
+# -- Step 3: Clean previous build -------------------------------------
 Write-Host "[3/5] Cleaning previous build output..." -ForegroundColor Yellow
 if (Test-Path "dist")  { Remove-Item -Recurse -Force "dist"  }
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 Write-Host "      Done." -ForegroundColor Green
 
-# ── Step 4: PyInstaller ───────────────────────────────────────────────
+# -- Step 4: PyInstaller ----------------------------------------------
 Write-Host "[4/5] Running PyInstaller..." -ForegroundColor Yellow
 python -m PyInstaller build.spec --noconfirm --clean
 if ($LASTEXITCODE -ne 0) { Write-Host "PyInstaller failed" -ForegroundColor Red; exit 1 }
@@ -52,7 +52,7 @@ if (-not (Test-Path $DistExe)) {
 }
 Write-Host "      Built: $DistExe" -ForegroundColor Green
 
-# ── Step 4.3: Bundle libusb-1.0.dll ──────────────────────────────────
+# -- Step 4.3: Bundle libusb-1.0.dll ----------------------------------
 Write-Host "[4.3] Looking for libusb-1.0.dll to bundle..." -ForegroundColor Yellow
 $LibusbDll = $null
 $LibusbSearchPaths = @(
@@ -70,23 +70,23 @@ if ($LibusbDll) {
     Copy-Item $LibusbDll "$ProjectRoot\dist\$AppName\libusb-1.0.dll" -Force
     Write-Host "      Bundled libusb-1.0.dll from: $LibusbDll" -ForegroundColor Green
 } else {
-    Write-Host "      libusb-1.0.dll not found — USB may require manual driver install." -ForegroundColor Yellow
-    Write-Host "      Install K40 Whisperer first, then rebuild, to bundle it automatically." -ForegroundColor Yellow
+    Write-Host "      libusb-1.0.dll not found - USB may need manual driver install." -ForegroundColor Yellow
+    Write-Host "      Install K40 Whisperer first, then rebuild, to auto-bundle it." -ForegroundColor Yellow
 }
 
-# ── Step 4.4: Bundle master product list (if available) ──────────────
+# -- Step 4.4: Bundle master product list (if available) --------------
 Write-Host "[4.4] Checking for master product list..." -ForegroundColor Yellow
 $ProductsFile = "$ProjectRoot\installer\products_default.json"
 if (Test-Path $ProductsFile) {
     Copy-Item $ProductsFile "$ProjectRoot\dist\$AppName\products_default.json" -Force
     $ProductCount = (Get-Content $ProductsFile | ConvertFrom-Json).product_count
-    Write-Host "      Bundled products_default.json  ($ProductCount products)" -ForegroundColor Green
+    Write-Host "      Bundled products_default.json ($ProductCount products)" -ForegroundColor Green
 } else {
-    Write-Host "      No products_default.json found — skipping." -ForegroundColor Yellow
-    Write-Host "      To bundle products: Settings → Data → Export Product List → save as installer\products_default.json" -ForegroundColor Yellow
+    Write-Host "      No products_default.json found - skipping." -ForegroundColor Yellow
+    Write-Host "      To bundle: Settings -> Data -> Export Product List -> save as installer\products_default.json" -ForegroundColor Yellow
 }
 
-# ── Step 4.5: Bundle factory data (if available) ─────────────────────
+# -- Step 4.5: Bundle factory data (if available) ---------------------
 Write-Host "[4.5] Checking for factory data to bundle..." -ForegroundColor Yellow
 
 $AppData       = "$env:APPDATA\MYMINI3D"
@@ -94,7 +94,7 @@ $BundleDataDir = "$ProjectRoot\installer\bundled_data"
 $BundleFlag    = ""
 
 if (Test-Path "$AppData\mymini3d.db") {
-    Write-Host "      Found data at $AppData — bundling into installer..." -ForegroundColor Yellow
+    Write-Host "      Found data at $AppData - bundling into installer..." -ForegroundColor Yellow
 
     # Clean staging folder
     if (Test-Path $BundleDataDir) { Remove-Item -Recurse -Force $BundleDataDir }
@@ -110,13 +110,13 @@ if (Test-Path "$AppData\mymini3d.db") {
     Write-Host "      Bundled $FileCount files." -ForegroundColor Green
     $BundleFlag = "/DBundleData=1"
 } else {
-    Write-Host "      No data found — installer will not include pre-loaded products." -ForegroundColor Yellow
+    Write-Host "      No data found - installer will not include pre-loaded products." -ForegroundColor Yellow
     Write-Host "      Add products via the app first, then re-run build.ps1." -ForegroundColor Yellow
-    # Clean stale bundled_data so Inno Setup doesn't pick up an old copy
+    # Clean stale bundled_data so Inno Setup does not pick up an old copy
     if (Test-Path $BundleDataDir) { Remove-Item -Recurse -Force $BundleDataDir }
 }
 
-# ── Step 5: Inno Setup ───────────────────────────────────────────────
+# -- Step 5: Inno Setup -----------------------------------------------
 Write-Host "[5/5] Building installer with Inno Setup..." -ForegroundColor Yellow
 
 # Create output folder
@@ -154,7 +154,7 @@ if (Test-Path $InstallerPath) {
     Write-Host "      Installer: $InstallerPath  ($SizeMB MB)" -ForegroundColor Green
 }
 
-# ── Done ──────────────────────────────────────────────────────────────
+# -- Done -------------------------------------------------------------
 Write-Host ""
 Write-Host "=====================================================" -ForegroundColor Cyan
 Write-Host "  BUILD COMPLETE" -ForegroundColor Green
