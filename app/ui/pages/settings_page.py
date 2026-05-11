@@ -338,10 +338,13 @@ class GDriveTab(QWidget):
 # ─────────────────────────────────────────────────────────────
 
 class UpdatesTab(QWidget):
+    _update_signal = pyqtSignal(bool, str, str)   # available, latest_version, dl_url
+
     def __init__(self, cfg: dict, parent=None):
         super().__init__(parent)
         self._cfg         = cfg
         self._download_url = ""
+        self._update_signal.connect(self._on_update_result)
         self._build()
 
     def _build(self):
@@ -406,21 +409,25 @@ class UpdatesTab(QWidget):
         self._check_status.setStyleSheet("color:#6e7681; font-size:12px;")
         self._install_btn.setVisible(False)
 
+        # Emit signal from background thread → Qt delivers it on the main thread
         def _result(available, latest, dl_url):
-            if available:
-                self._check_status.setText(
-                    f"Update available:  v{latest}  →  click below to install"
-                )
-                self._check_status.setStyleSheet("color:#d29922; font-size:12px;")
-                self._download_url = dl_url
-                self._install_btn.setVisible(bool(dl_url))
-            else:
-                self._check_status.setText(
-                    f"✓ You're on the latest version  (v{__version__})"
-                )
-                self._check_status.setStyleSheet("color:#3fb950; font-size:12px;")
+            self._update_signal.emit(available, latest or "", dl_url or "")
 
         update_service.check_for_update(on_result=_result)
+
+    def _on_update_result(self, available: bool, latest: str, dl_url: str):
+        if available:
+            self._check_status.setText(
+                f"Update available:  v{latest}  →  click below to install"
+            )
+            self._check_status.setStyleSheet("color:#d29922; font-size:12px;")
+            self._download_url = dl_url
+            self._install_btn.setVisible(bool(dl_url))
+        else:
+            self._check_status.setText(
+                f"You are on the latest version  (v{__version__})"
+            )
+            self._check_status.setStyleSheet("color:#3fb950; font-size:12px;")
 
     def _install(self):
         if not self._download_url:

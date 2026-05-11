@@ -181,6 +181,10 @@ class K40Driver:
                 dev.set_configuration()
             except Exception:
                 pass  # device may already be configured
+            try:
+                usb.util.claim_interface(dev, 0)
+            except Exception:
+                pass  # Windows libusb-win32 may not need explicit claim
             self._device = dev
             self.status.connected = True
             self.status.message = "Connected"
@@ -226,16 +230,19 @@ class K40Driver:
         """Send a 30-byte packet and return the status byte."""
         if not USB_AVAILABLE or self._device is None:
             return STATUS_OK
-        packet = bytearray(PACKET_SIZE)
-        packet[0] = 0
-        for i, b in enumerate(data[:PACKET_SIZE - 2]):
-            packet[i + 1] = b
-        crc = self._crc(packet[1:PACKET_SIZE - 1])
-        packet[PACKET_SIZE - 1] = crc
-        with self._lock:
-            self._device.write(ENDPOINT_WRITE, bytes(packet), timeout=5000)
-            resp = self._device.read(ENDPOINT_READ, PACKET_SIZE, timeout=5000)
-        return resp[1] if len(resp) > 1 else 0
+        try:
+            packet = bytearray(PACKET_SIZE)
+            packet[0] = 0
+            for i, b in enumerate(data[:PACKET_SIZE - 2]):
+                packet[i + 1] = b
+            crc = self._crc(packet[1:PACKET_SIZE - 1])
+            packet[PACKET_SIZE - 1] = crc
+            with self._lock:
+                self._device.write(ENDPOINT_WRITE, bytes(packet), timeout=5000)
+                resp = self._device.read(ENDPOINT_READ, PACKET_SIZE, timeout=5000)
+            return resp[1] if len(resp) > 1 else 0
+        except Exception:
+            return 0
 
     @staticmethod
     def _crc(data: bytes) -> int:
