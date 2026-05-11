@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -606,22 +607,50 @@ class ControlPanel(QWidget):
         self._refresh_conn()
 
     def _cmd(self, fn):
-        if self._machine_id: fn(self._machine_id)
+        if self._machine_id:
+            threading.Thread(target=fn, args=(self._machine_id,), daemon=True).start()
 
     def _initialize(self):
-        if self._check(): cmd_initialize(self._machine_id)
+        if self._machine_id is None:
+            QMessageBox.information(self, "No Machine", "Select a machine first.")
+            return
+        # Auto-connect if not already connected (like K40 Whisperer)
+        if not machine_manager.status(self._machine_id).connected:
+            with get_session() as s:
+                m = s.get(Machine, self._machine_id)
+                vid = int(m.usb_vendor_id,  16) if m else 0x1a86
+                pid = int(m.usb_product_id, 16) if m else 0x5512
+                sn  = m.serial_number       if m else ""
+            ok = machine_manager.connect(self._machine_id, vendor_id=vid,
+                                         product_id=pid, serial=sn)
+            self._refresh_conn()
+            if not ok:
+                msg = machine_manager.status(self._machine_id).message
+                QMessageBox.warning(self, "Connection Failed", msg)
+                return
+        # Run in background thread — never block the UI
+        threading.Thread(
+            target=cmd_initialize, args=(self._machine_id,), daemon=True
+        ).start()
 
     def _do_jog(self, dx, dy):
-        if self._check():
-            cmd_jog(self._machine_id, dx, dy)
-            drv = machine_manager._drivers.get(self._machine_id)
-            if drv:
-                drv._pos_x = getattr(drv, "_pos_x", 0.0) + dx
-                drv._pos_y = getattr(drv, "_pos_y", 0.0) + dy
+        if not self._check():
+            return
+        drv = machine_manager._drivers.get(self._machine_id)
+        if drv:
+            drv._pos_x = getattr(drv, "_pos_x", 0.0) + dx
+            drv._pos_y = getattr(drv, "_pos_y", 0.0) + dy
+        threading.Thread(
+            target=cmd_jog, args=(self._machine_id, dx, dy), daemon=True
+        ).start()
 
     def _do_move(self):
-        if self._check():
-            cmd_move_to(self._machine_id, self._mx.value(), self._my.value())
+        if not self._check():
+            return
+        x, y = self._mx.value(), self._my.value()
+        threading.Thread(
+            target=cmd_move_to, args=(self._machine_id, x, y), daemon=True
+        ).start()
 
     def _do_stop(self):
         if self._machine_id: cmd_stop(self._machine_id)
