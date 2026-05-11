@@ -30,11 +30,16 @@ def _find_libusb_dll() -> Optional[str]:
         # Bundled in our own app folder (PyInstaller _MEIPASS or exe dir)
         os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(
             os.path.abspath(sys.executable))), "libusb-1.0.dll"),
-        # K40 Whisperer installation (most likely to have it)
+        # K40 Whisperer installation
         r"C:\Program Files (x86)\K40 Whisperer\libusb-1.0.dll",
         r"C:\Program Files\K40 Whisperer\libusb-1.0.dll",
         r"C:\K40 Whisperer\libusb-1.0.dll",
-        # Other common locations
+        # Steam (commonly installed on gaming PCs)
+        r"C:\Program Files (x86)\Steam\libusb-1.0.dll",
+        r"C:\Program Files\Steam\libusb-1.0.dll",
+        # ASUS Armory Crate
+        r"C:\Program Files\ASUS\ARMOURY CRATE Lite Service\HWComponentPlugin\libusb-1.0.dll",
+        # System locations
         r"C:\Windows\System32\libusb-1.0.dll",
         r"C:\Windows\SysWOW64\libusb-1.0.dll",
     ]
