@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QSpinBox, QFileDialog, QMessageBox,
     QProgressBar, QSizePolicy, QTabWidget, QDialog
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 from app.core.database import (
     get_session, Machine, MachineStatus,
@@ -217,6 +217,9 @@ class MachineListPanel(QWidget):
 
 class ControlPanel(QWidget):
 
+    _job_prog_sig = pyqtSignal(int, str)    # pct, message
+    _job_done_sig = pyqtSignal(bool, str)   # ok, message
+
     W = 260   # fixed panel width — 30% wider than original 200
 
     def __init__(self, parent=None):
@@ -266,6 +269,8 @@ class ControlPanel(QWidget):
         return s
 
     def _build(self):
+        self._job_prog_sig.connect(self._on_job_progress)
+        self._job_done_sig.connect(self._on_job_done)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -710,7 +715,6 @@ class ControlPanel(QWidget):
         self._do_mode("cut")
 
     def _run_job(self, trace_only: bool, mode: str = "cut"):
-        # Pick active speed based on mode
         spd_map = {
             "cut":     self._spd_cut.value(),
             "engrave": self._spd_vector.value(),
@@ -723,31 +727,19 @@ class ControlPanel(QWidget):
             speed_raster_mm_s=active_spd,
             passes=self._passes.value(),
         )
-        self._progress.setVisible(True); self._progress.setValue(0)
+        self._current_mode      = mode
+        self._current_trace     = trace_only
+        self._progress.setVisible(True)
+        self._progress.setValue(0)
         self._job_lbl.setVisible(True)
         self._job_lbl.setText("Tracing…" if trace_only else "Cutting…")
 
+        # Use signals — never touch Qt widgets directly from background thread
         def _prog(pct, msg):
-            self._progress.setValue(int(pct))
-            self._job_lbl.setText(msg[:28])
+            self._job_prog_sig.emit(int(pct), msg[:28])
 
         def _done(ok, msg):
-            self._progress.setVisible(False)
-            self._job_lbl.setVisible(False)
-            if not trace_only:
-                from app.services.telegram_service import telegram_service
-                _mode_labels = {"cut": "Vector Cut", "engrave": "Vector Engrave", "raster": "Raster Engrave"}
-                label = _mode_labels.get(mode, mode)
-                if ok:
-                    telegram_service.notify_job_completed(
-                        label, Path(self._file_path).name, 1, self._name_lbl.text()
-                    )
-                else:
-                    telegram_service.notify_job_failed(
-                        label, Path(self._file_path).name, msg
-                    )
-            if not ok and not trace_only:
-                QTimer.singleShot(0, lambda: QMessageBox.warning(self, "Job Error", msg))
+            self._job_done_sig.emit(ok, msg)
 
         job = LaserJob(
             machine_id=self._machine_id, file_path=self._file_path,
@@ -755,7 +747,30 @@ class ControlPanel(QWidget):
             mode=mode if not trace_only else "cut",
             on_progress=_prog, on_done=_done,
         )
-        self._active_job = job; job.start()
+        self._active_job = job
+        job.start()
+
+    def _on_job_progress(self, pct: int, msg: str):
+        self._progress.setValue(pct)
+        self._job_lbl.setText(msg)
+
+    def _on_job_done(self, ok: bool, msg: str):
+        self._progress.setVisible(False)
+        self._job_lbl.setVisible(False)
+        trace_only = getattr(self, "_current_trace", False)
+        mode       = getattr(self, "_current_mode",  "cut")
+        if not trace_only:
+            from app.services.telegram_service import telegram_service
+            _labels = {"cut": "Vector Cut", "engrave": "Vector Engrave", "raster": "Raster Engrave"}
+            label   = _labels.get(mode, mode)
+            if ok:
+                telegram_service.notify_job_completed(
+                    label, Path(self._file_path).name, 1, self._name_lbl.text()
+                )
+            else:
+                telegram_service.notify_job_failed(label, Path(self._file_path).name, msg)
+        if not ok and not trace_only:
+            QMessageBox.warning(self, "Job Error", msg)
 
     def _check(self) -> bool:
         if self._machine_id is None:
