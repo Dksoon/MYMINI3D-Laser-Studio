@@ -132,7 +132,7 @@ def _make_packet(cmd: bytes) -> bytes:
     for i, b in enumerate(cmd[:DATA_LEN]):
         packet[2 + i] = b
     packet[32] = HEADER
-    packet[33] = _k40_crc(bytes(packet[1:33]))
+    packet[33] = _k40_crc(bytes(packet[1:32]))
     return bytes(packet)
 
 
@@ -221,8 +221,8 @@ class K40Driver:
 
             self._device = dev
 
-            # Say hello — get initial status (K40W does this before any commands)
-            self._say_hello()
+            # Say hello — get initial status
+            self._hello()
 
             self.status.connected = True
             self.status.message   = "Connected"
@@ -257,8 +257,8 @@ class K40Driver:
 
     # ── Low-level I/O ─────────────────────────────────────────────────
 
-    def _say_hello(self) -> int:
-        """Send status query [0xA0] and return status byte — K40 Whisperer startup."""
+    def _hello(self) -> int:
+        """Poll machine status via [0xA0] — the only packet that gets a direct response."""
         try:
             with self._lock:
                 self._device.write(ENDPOINT_WRITE, bytes([0xA0]), TIMEOUT_MS)
@@ -268,28 +268,32 @@ class K40Driver:
             return 0
 
     def _send_packet(self, cmd: bytes) -> int:
-        """Send one 34-byte K40 packet and return the status byte."""
+        """
+        Write one 34-byte command packet.
+        K40 does NOT send a direct response — poll with _hello() for status.
+        Returns STATUS_OK if write succeeded, 0 on error.
+        """
         if not USB_AVAILABLE or self._device is None:
             return STATUS_OK
         try:
-            packet = _make_packet(cmd)
             with self._lock:
-                self._device.write(ENDPOINT_WRITE, packet, TIMEOUT_MS)
-                resp = self._device.read(ENDPOINT_READ, READ_LEN, TIMEOUT_MS)
-            return resp[1] if len(resp) > 1 else 0
+                self._device.write(ENDPOINT_WRITE, _make_packet(cmd), TIMEOUT_MS)
+            return STATUS_OK
         except Exception:
             return 0
 
-    def _send_cmd(self, cmd: bytes):
-        """Send command, retry on CRC error, wait if busy."""
-        for _ in range(10):
-            status = self._send_packet(cmd)
-            if status == STATUS_CRC_ERR:
-                continue
+    def _send_cmd(self, cmd: bytes, wait_done: bool = True):
+        """Write command then poll until machine is no longer BUSY."""
+        if self._send_packet(cmd) == 0:
+            return
+        if not wait_done:
+            return
+        for _ in range(60):           # max ~6 seconds
+            time.sleep(0.1)
+            status = self._hello()
             if status == STATUS_BUSY:
-                time.sleep(TIMEOUT_MS / 1000)
                 continue
-            break
+            break                     # OK, CRC_ERR, COMPLETE, or other
 
     # ── Machine control (Lhymicro-GL commands) ────────────────────────
 
@@ -322,7 +326,7 @@ class K40Driver:
         ).start()
 
     def _send_raw_worker(self, egv_data: bytes, on_progress, on_done):
-        self._abort   = False
+        self._abort          = False
         self.status.busy     = True
         self.status.progress = 0.0
         total = len(egv_data)
@@ -330,13 +334,23 @@ class K40Driver:
 
         try:
             while sent < total and not self._abort:
-                piece  = egv_data[sent: sent + DATA_LEN]
-                status = self._send_packet(piece)
-                if status == STATUS_CRC_ERR:
-                    status = self._send_packet(piece)   # retry once
-                if status == STATUS_BUSY:
-                    time.sleep(TIMEOUT_MS / 1000)
-                    continue
+                piece = egv_data[sent: sent + DATA_LEN]
+
+                # Write packet — no direct response, poll for status
+                if self._send_packet(piece) == 0:
+                    raise RuntimeError("USB write failed")
+
+                # Poll until machine is ready for next packet
+                for _ in range(100):
+                    status = self._hello()
+                    if status == STATUS_BUSY:
+                        time.sleep(0.05)
+                        continue
+                    if status == STATUS_CRC_ERR:
+                        # Retry the packet
+                        self._send_packet(piece)
+                    break
+
                 sent += len(piece)
                 self.status.progress = sent / total * 100
                 if on_progress:
