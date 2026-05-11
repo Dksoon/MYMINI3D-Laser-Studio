@@ -174,7 +174,21 @@ class K40Driver:
             self.status.message = "Connected"
             return True
         except Exception as e:
-            self.status.message = f"Connection error: {e}"
+            err_str = str(e).lower()
+            if "13" in str(e) or "access denied" in err_str or "insufficient permissions" in err_str:
+                self.status.message = (
+                    "ACCESS DENIED - wrong USB driver.\n\n"
+                    "The K40 is connected but Windows is using the wrong driver.\n"
+                    "Steps to fix:\n"
+                    "1. Click 'Install Driver' button (bottom of machine list)\n"
+                    "2. Unplug the USB cable from the laser\n"
+                    "3. Plug it back in\n"
+                    "4. Click Connect again\n\n"
+                    "If it still fails, use Zadig (zadig.akeo.ie):\n"
+                    "Options > List All Devices > select CH341 > WinUSB > Install"
+                )
+            else:
+                self.status.message = f"Connection error: {e}"
             return False
 
     def disconnect(self):

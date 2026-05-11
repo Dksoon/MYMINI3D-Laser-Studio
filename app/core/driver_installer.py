@@ -99,24 +99,33 @@ def install_driver_silent() -> tuple[bool, str]:
         return False, f"Driver file not found:\n{inf}"
 
     try:
+        # Step 1: Add driver to Windows driver store
         result = subprocess.run(
             ["pnputil", "/add-driver", str(inf), "/install"],
             capture_output=True, text=True, timeout=60
         )
         out = (result.stdout + result.stderr).strip()
 
-        # Exit code 0 = success, 3010 = success + reboot needed
-        if result.returncode in (0, 3010):
-            msg = "Driver installed successfully."
-            if result.returncode == 3010:
-                msg += "\n\nA restart may be needed — usually not required."
-            return True, msg
+        ok = result.returncode in (0, 3010, 259) or "already installed" in out.lower()
 
-        # Exit code 259 = driver already present (also fine)
-        if result.returncode == 259 or "already installed" in out.lower():
-            return True, "Driver already installed."
+        if not ok:
+            return False, f"pnputil failed (code {result.returncode}):\n{out}"
 
-        return False, f"pnputil failed (code {result.returncode}):\n{out}"
+        # Step 2: Force-update any connected K40 devices to use the new driver.
+        # This handles devices already plugged in that are still on the old CH341 driver.
+        try:
+            subprocess.run(
+                ["pnputil", "/scan-devices"],
+                capture_output=True, text=True, timeout=30
+            )
+        except Exception:
+            pass
+
+        msg = "Driver installed! Now:\n1. Unplug the USB cable from the laser\n2. Plug it back in\n3. Click Connect"
+        if result.returncode == 3010:
+            msg += "\n\n(A Windows restart may be needed if it still fails)"
+        return True, msg
+
     except FileNotFoundError:
         return False, "pnputil not found — requires Windows 10/11."
     except Exception as e:

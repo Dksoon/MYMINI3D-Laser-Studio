@@ -584,10 +584,25 @@ class ControlPanel(QWidget):
                     m.status = MachineStatus.idle if ok else MachineStatus.error
                     s.commit()
             if not ok:
-                QMessageBox.warning(
-                    self, "Connection Failed",
-                    machine_manager.status(self._machine_id).message
-                )
+                msg = machine_manager.status(self._machine_id).message
+                if "ACCESS DENIED" in msg or "wrong USB driver" in msg:
+                    # Offer to open driver installer directly
+                    from PyQt6.QtWidgets import QMessageBox as _MB
+                    box = _MB(self)
+                    box.setWindowTitle("Connection Failed - Wrong Driver")
+                    box.setIcon(_MB.Icon.Warning)
+                    box.setText(
+                        "The K40 is plugged in but Windows is using the wrong USB driver.\n\n"
+                        "Click 'Install Driver' to fix this automatically."
+                    )
+                    fix_btn = box.addButton("Install Driver Now", _MB.ButtonRole.AcceptRole)
+                    box.addButton("Cancel", _MB.ButtonRole.RejectRole)
+                    box.exec()
+                    if box.clickedButton() is fix_btn:
+                        from app.ui.dialogs.driver_install_dialog import DriverInstallDialog
+                        DriverInstallDialog(self).exec()
+                else:
+                    QMessageBox.warning(self, "Connection Failed", msg)
         self._refresh_conn()
 
     def _cmd(self, fn):
