@@ -144,11 +144,23 @@ class DriverInstallDialog(QDialog):
     # ------------------------------------------------------------------ status check
 
     def _check_status(self):
+        # Enable Install Driver immediately — don't make user wait for pnputil checks
+        self._install_btn.setEnabled(True)
+        self._usb_dot.setStyleSheet("color:#d29922; font-size:16px;")
+        self._usb_lbl.setText("K40 laser — make sure it is powered on and plugged in")
+        self._usb_lbl.setStyleSheet("color:#d29922;")
+        self._drv_dot.setStyleSheet("color:#d29922; font-size:16px;")
+        self._drv_lbl.setText("Click Install Driver to set up the USB driver")
+        self._drv_lbl.setStyleSheet("color:#d29922;")
+
+        # Run the slow checks in background — update labels if they finish
         def _run():
-            usb = k40_usb_present()
-            drv = k40_driver_installed()
-            # Schedule UI update on main thread
-            QTimer.singleShot(0, lambda: self._update_status(usb, drv))
+            try:
+                usb = k40_usb_present()
+                drv = k40_driver_installed()
+                QTimer.singleShot(0, lambda: self._update_status(usb, drv))
+            except Exception:
+                pass  # ignore — button is already enabled
 
         threading.Thread(target=_run, daemon=True).start()
 

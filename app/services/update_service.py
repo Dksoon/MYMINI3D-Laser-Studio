@@ -72,19 +72,10 @@ class UpdateService:
 
             available = _parse_version(latest_tag) > _parse_version(__version__)
             if on_result:
-                # Marshal callback to main Qt thread to avoid silent UI update failures
-                try:
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(0, lambda: on_result(available, latest_tag, exe_url))
-                except Exception:
-                    on_result(available, latest_tag, exe_url)
+                on_result(available, latest_tag, exe_url)
         except Exception:
             if on_result:
-                try:
-                    from PyQt6.QtCore import QTimer
-                    QTimer.singleShot(0, lambda: on_result(False, __version__, ""))
-                except Exception:
-                    on_result(False, __version__, "")
+                on_result(False, __version__, "")
 
     # ------------------------------------------------------------------ download + install
 
