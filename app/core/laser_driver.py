@@ -26,33 +26,41 @@ except ImportError:
 
 def _find_libusb_dll() -> Optional[str]:
     """Return path to libusb-1.0.dll, or None if not found."""
+    # When running as a PyInstaller exe, the DLL sits next to the .exe,
+    # NOT inside _MEIPASS (which holds Python bytecode).
+    _exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    _mei_dir = getattr(sys, "_MEIPASS", "")
+
     candidates = [
-        # Bundled in our own app folder (PyInstaller _MEIPASS or exe dir)
-        os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(
-            os.path.abspath(sys.executable))), "libusb-1.0.dll"),
+        # Our installer copies it here (next to MYMINI3D Laser Studio.exe)
+        os.path.join(_exe_dir, "libusb-1.0.dll"),
+        # PyInstaller _MEIPASS (if bundled as binary in build.spec)
+        os.path.join(_mei_dir, "libusb-1.0.dll") if _mei_dir else "",
         # K40 Whisperer installation
         r"C:\Program Files (x86)\K40 Whisperer\libusb-1.0.dll",
         r"C:\Program Files\K40 Whisperer\libusb-1.0.dll",
         r"C:\K40 Whisperer\libusb-1.0.dll",
-        # Steam (commonly installed on gaming PCs)
+        # Steam
         r"C:\Program Files (x86)\Steam\libusb-1.0.dll",
         r"C:\Program Files\Steam\libusb-1.0.dll",
         # ASUS Armory Crate
         r"C:\Program Files\ASUS\ARMOURY CRATE Lite Service\HWComponentPlugin\libusb-1.0.dll",
-        # System locations
+        # System
         r"C:\Windows\System32\libusb-1.0.dll",
         r"C:\Windows\SysWOW64\libusb-1.0.dll",
     ]
     for path in candidates:
-        if os.path.isfile(path):
+        if path and os.path.isfile(path):
             return path
     return None
 
 
 def _get_usb_backend():
-    """Return a working pyusb backend, or None."""
+    """Return a working pyusb backend (tries libusb1 then libusb0), or None."""
     if not USB_AVAILABLE:
         return None
+
+    # --- Try libusb1 (libusb-1.0.dll) ---
     dll = _find_libusb_dll()
     if dll:
         try:
@@ -61,10 +69,25 @@ def _get_usb_backend():
                 return b
         except Exception:
             pass
+
+    # --- Try libusb1 system default ---
     try:
-        return _libusb1_mod.get_backend()   # system default search
+        b = _libusb1_mod.get_backend()
+        if b:
+            return b
     except Exception:
-        return None
+        pass
+
+    # --- Try libusb0 (libusb-win32, used by some K40W installations) ---
+    try:
+        import usb.backend.libusb0 as _libusb0_mod
+        b = _libusb0_mod.get_backend()
+        if b:
+            return b
+    except Exception:
+        pass
+
+    return None
 
 
 _USB_BACKEND = None   # initialised on first connect attempt
