@@ -153,10 +153,12 @@ class K40Driver:
     """Low-level USB driver for one K40 machine. Protocol = K40 Whisperer."""
 
     def __init__(self, vendor_id: int = K40_VENDOR_ID,
-                 product_id: int = K40_PRODUCT_ID, serial: str = ""):
-        self.vendor_id  = vendor_id
-        self.product_id = product_id
-        self.serial     = serial
+                 product_id: int = K40_PRODUCT_ID,
+                 serial: str = "", device_index: int = 0):
+        self.vendor_id    = vendor_id
+        self.product_id   = product_id
+        self.serial       = serial
+        self.device_index = device_index   # which K40 to connect to (0=first)
         self._device    = None
         self._lock      = threading.Lock()
         self.status     = LaserStatus()
@@ -183,12 +185,26 @@ class K40Driver:
                 )
                 return False
 
-            kwargs = {"idVendor": self.vendor_id, "idProduct": self.product_id,
-                      "backend": _USB_BACKEND}
-            if self.serial:
-                kwargs["serial_number"] = self.serial
+            # Find all matching K40 devices, pick by index
+            all_devs = list(usb.core.find(
+                idVendor=self.vendor_id, idProduct=self.product_id,
+                backend=_USB_BACKEND, find_all=True
+            ))
+            if not all_devs:
+                self.status.message = (
+                    "K40 not found on USB.\n"
+                    "Check cable is plugged in and machine is ON."
+                )
+                return False
+            if self.device_index >= len(all_devs):
+                self.status.message = (
+                    f"USB Device #{self.device_index} not found.\n"
+                    f"Only {len(all_devs)} K40 machine(s) connected.\n"
+                    "Edit machine settings and set Device # to 0."
+                )
+                return False
 
-            dev = usb.core.find(**kwargs)
+            dev = all_devs[self.device_index]
             if dev is None:
                 self.status.message = (
                     "K40 not found on USB.\n"
@@ -375,9 +391,12 @@ class MachineManager:
         self._drivers: dict[int, K40Driver] = {}
 
     def get_driver(self, machine_id: int, vendor_id: int = K40_VENDOR_ID,
-                   product_id: int = K40_PRODUCT_ID, serial: str = "") -> K40Driver:
+                   product_id: int = K40_PRODUCT_ID,
+                   serial: str = "", device_index: int = 0) -> K40Driver:
         if machine_id not in self._drivers:
-            self._drivers[machine_id] = K40Driver(vendor_id, product_id, serial)
+            self._drivers[machine_id] = K40Driver(
+                vendor_id, product_id, serial, device_index
+            )
         return self._drivers[machine_id]
 
     def connect(self, machine_id: int, **kwargs) -> bool:

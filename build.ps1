@@ -12,7 +12,7 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 $AppName     = "MYMINI3D Laser Studio"
-$Version     = "2.2.3"
+$Version     = "2.2.4"
 
 Write-Host ""
 Write-Host "=====================================================" -ForegroundColor Cyan

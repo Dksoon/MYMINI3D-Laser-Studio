@@ -5,7 +5,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QDoubleSpinBox, QTextEdit,
-    QDialogButtonBox, QFrame
+    QDialogButtonBox, QFrame, QSpinBox, QPushButton, QComboBox
 )
 from PyQt6.QtCore import Qt
 
@@ -42,12 +42,8 @@ class MachineDialog(QDialog):
         id_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self._name = QLineEdit()
-        self._name.setPlaceholderText("e.g. Laser #1")
+        self._name.setPlaceholderText("e.g. Left Machine / Right Machine")
         id_form.addRow("Name *", self._name)
-
-        self._serial = QLineEdit()
-        self._serial.setPlaceholderText("Leave blank if only one K40 is connected")
-        id_form.addRow("Serial Number", self._serial)
 
         lay.addWidget(id_frame)
 
@@ -59,20 +55,29 @@ class MachineDialog(QDialog):
         usb_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         usb_note = QLabel(
-            "K40 defaults: Vendor 1a86 · Product 5512\n"
-            "Change only if your machine uses different USB IDs."
+            "If you have multiple K40 machines connected, set the device number\n"
+            "so each machine gets its own USB connection (0 = first, 1 = second)."
         )
         usb_note.setStyleSheet("color:#6e7681; font-size:11px;")
         usb_note.setWordWrap(True)
         usb_form.addRow("", usb_note)
 
-        self._vendor = QLineEdit("1a86")
-        self._vendor.setMaxLength(6)
-        usb_form.addRow("Vendor ID (hex)", self._vendor)
-
-        self._product_id_edit = QLineEdit("5512")
-        self._product_id_edit.setMaxLength(6)
-        usb_form.addRow("Product ID (hex)", self._product_id_edit)
+        # USB device number row with Scan button
+        dev_row = QHBoxLayout(); dev_row.setSpacing(8)
+        self._dev_index = QSpinBox()
+        self._dev_index.setRange(0, 9); self._dev_index.setValue(0)
+        self._dev_index.setFixedWidth(60)
+        self._dev_index.setToolTip("0 = first K40 found, 1 = second K40, etc.")
+        dev_row.addWidget(self._dev_index)
+        scan_btn = QPushButton("Scan")
+        scan_btn.setFixedWidth(60)
+        scan_btn.setToolTip("Find all connected K40 machines")
+        scan_btn.clicked.connect(self._scan_devices)
+        dev_row.addWidget(scan_btn)
+        self._scan_lbl = QLabel("")
+        self._scan_lbl.setStyleSheet("color:#6e7681; font-size:11px;")
+        dev_row.addWidget(self._scan_lbl, 1)
+        usb_form.addRow("USB Device #", dev_row)
 
         lay.addWidget(usb_frame)
 
@@ -115,15 +120,45 @@ class MachineDialog(QDialog):
 
     # ------------------------------------------------------------------ data
 
+    def _scan_devices(self):
+        """Find all connected K40 USB devices and show count."""
+        try:
+            import usb.core
+            import usb.backend.libusb0 as _lib0
+            import os, sys
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            dll = None
+            for d in [exe_dir, r"C:\Program Files\K40 Whisperer"]:
+                p = os.path.join(d, "libusb0.dll")
+                if os.path.isfile(p):
+                    dll = p; break
+            backend = _lib0.get_backend(find_library=lambda _: dll) if dll else None
+            kwargs = {"idVendor": 0x1A86, "idProduct": 0x5512, "find_all": True}
+            if backend:
+                kwargs["backend"] = backend
+            devices = list(usb.core.find(**kwargs))
+            n = len(devices)
+            if n == 0:
+                self._scan_lbl.setText("No K40 found — check USB cable")
+                self._scan_lbl.setStyleSheet("color:#f85149; font-size:11px;")
+            else:
+                self._scan_lbl.setText(
+                    f"{n} K40 machine{'s' if n>1 else ''} found  "
+                    f"(set 0…{n-1})"
+                )
+                self._scan_lbl.setStyleSheet("color:#3fb950; font-size:11px;")
+                self._dev_index.setMaximum(max(0, n - 1))
+        except Exception as e:
+            self._scan_lbl.setText(f"Scan error: {e}")
+            self._scan_lbl.setStyleSheet("color:#f85149; font-size:11px;")
+
     def _load(self):
         with get_session() as s:
             m = s.get(Machine, self._machine_id)
             if not m:
                 return
             self._name.setText(m.name)
-            self._serial.setText(m.serial_number or "")
-            self._vendor.setText(m.usb_vendor_id or "1a86")
-            self._product_id_edit.setText(m.usb_product_id or "5512")
+            self._dev_index.setValue(m.usb_device_index or 0)
             self._bed_w.setValue(m.bed_width_mm or 400)
             self._bed_h.setValue(m.bed_height_mm or 400)
             self._notes.setPlainText(m.notes or "")
@@ -143,9 +178,7 @@ class MachineDialog(QDialog):
                 s.add(m)
 
             m.name             = name
-            m.serial_number    = self._serial.text().strip()
-            m.usb_vendor_id    = self._vendor.text().strip().lower() or "1a86"
-            m.usb_product_id   = self._product_id_edit.text().strip().lower() or "5512"
+            m.usb_device_index = self._dev_index.value()
             m.bed_width_mm     = self._bed_w.value()
             m.bed_height_mm    = self._bed_h.value()
             m.notes            = self._notes.toPlainText().strip()

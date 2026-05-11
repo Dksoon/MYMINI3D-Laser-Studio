@@ -54,9 +54,10 @@ class Machine(Base):
     __tablename__ = "machines"
     id             = Column(Integer, primary_key=True)
     name           = Column(String(100), nullable=False)
-    usb_vendor_id  = Column(String(10),  default="1a86")
-    usb_product_id = Column(String(10),  default="5512")
-    serial_number  = Column(String(100), default="")
+    usb_vendor_id    = Column(String(10),  default="1a86")
+    usb_product_id   = Column(String(10),  default="5512")
+    serial_number    = Column(String(100), default="")
+    usb_device_index = Column(Integer,     default=0)   # 0=first K40, 1=second, etc.
     status         = Column(String(20),  default=MachineStatus.offline)
     bed_width_mm   = Column(Float,  default=400.0)
     bed_height_mm  = Column(Float,  default=400.0)
@@ -242,6 +243,9 @@ def _migrate(engine):
     Runs safely on every startup — skips columns that already exist."""
     needed = {
         # table_name: [(column_name, sql_type, default)]
+        "machines": [
+            ("usb_device_index", "INTEGER", "0"),
+        ],
         "products": [
             ("category",    "VARCHAR(200)", "''"),
             ("folder_path", "VARCHAR(500)", "''"),

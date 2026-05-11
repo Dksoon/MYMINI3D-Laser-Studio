@@ -581,9 +581,9 @@ class ControlPanel(QWidget):
                 m = s.get(Machine, self._machine_id)
                 vid = int(m.usb_vendor_id,  16) if m else 0x1a86
                 pid = int(m.usb_product_id, 16) if m else 0x5512
-                sn  = m.serial_number       if m else ""
+                idx = (m.usb_device_index or 0) if m else 0
             ok = machine_manager.connect(self._machine_id, vendor_id=vid,
-                                         product_id=pid, serial=sn)
+                                         product_id=pid, device_index=idx)
             with get_session() as s:
                 m = s.get(Machine, self._machine_id)
                 if m:
@@ -625,9 +625,9 @@ class ControlPanel(QWidget):
                 m = s.get(Machine, self._machine_id)
                 vid = int(m.usb_vendor_id,  16) if m else 0x1a86
                 pid = int(m.usb_product_id, 16) if m else 0x5512
-                sn  = m.serial_number       if m else ""
+                idx = (m.usb_device_index or 0) if m else 0
             ok = machine_manager.connect(self._machine_id, vendor_id=vid,
-                                         product_id=pid, serial=sn)
+                                         product_id=pid, device_index=idx)
             self._refresh_conn()
             if not ok:
                 msg = machine_manager.status(self._machine_id).message

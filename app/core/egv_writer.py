@@ -132,8 +132,8 @@ class EGVWriter:
 
     def _write_header(self):
         spd = speed_to_byte(self._speed)
-        # Speed command: I (init) + V (speed) + speed_byte + L1a$
-        self._buf += [ord("I"), ord("V"), spd,
+        # IS1V{spd}L1a$N — K40 Whisperer M2 Nano format
+        self._buf += [ord("I"), ord("S"), ord("1"), ord("V"), spd,
                       ord("L"), ord("1"), ord("a"), ord("$"), ord("N")]
 
     def _write_footer(self):
