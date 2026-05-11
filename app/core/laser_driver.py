@@ -170,9 +170,17 @@ class K40Driver:
                     "Then try Install Driver if you haven't already."
                 )
                 return False
-            if dev.is_kernel_driver_active(0):
-                dev.detach_kernel_driver(0)
-            dev.set_configuration()
+            # is_kernel_driver_active / detach_kernel_driver are Linux-only.
+            # On Windows these raise NotImplementedError — skip silently.
+            try:
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
+            except Exception:
+                pass
+            try:
+                dev.set_configuration()
+            except Exception:
+                pass  # device may already be configured
             self._device = dev
             self.status.connected = True
             self.status.message = "Connected"
