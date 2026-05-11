@@ -17,8 +17,11 @@ datas = [
     ("app/resources/styles/theme.qss", "app/resources/styles"),
     # Icons folder
     ("app/resources/icons",            "app/resources/icons"),
-    # K40 USB driver INF (used by driver_installer.py)
+    # K40 USB driver files (used by driver_installer.py and laser_driver.py)
     ("drivers/k40_winusb.inf",         "drivers"),
+    ("drivers/K40_Laser.inf",          "drivers"),
+    ("drivers/K40_Driver_Install.exe", "drivers"),
+    ("drivers/libusb0.dll",            "drivers"),
 ]
 
 # ── Hidden imports not auto-detected by PyInstaller ───────────────────

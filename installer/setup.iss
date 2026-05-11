@@ -4,7 +4,7 @@
 ; =====================================================================
 
 #define AppName       "MYMINI3D Laser Studio"
-#define AppVersion    "2.1.6"
+#define AppVersion    "2.1.7"
 #define AppPublisher  "MYMINI3D"
 #define AppExeName    "MYMINI3D Laser Studio.exe"
 #define AppId         "{{A3F2C8D1-7B4E-4A9F-B6E2-1D5C8F3A2E91}"
@@ -61,8 +61,11 @@ Name: "installdriver"; Description: "Install K40 USB driver automatically"; Grou
 [Files]
 ; Copy entire PyInstaller output folder
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Bundle driver INF alongside the app
-Source: "..\drivers\k40_winusb.inf"; DestDir: "{app}\drivers"; Flags: ignoreversion
+; Bundle K40 driver files alongside the app
+Source: "..\drivers\k40_winusb.inf";         DestDir: "{app}\drivers"; Flags: ignoreversion
+Source: "..\drivers\K40_Laser.inf";          DestDir: "{app}\drivers"; Flags: ignoreversion; Check: FileExists(ExpandConstant('{src}\..\drivers\K40_Laser.inf'))
+Source: "..\drivers\K40_Driver_Install.exe"; DestDir: "{app}";         Flags: ignoreversion; Check: FileExists(ExpandConstant('{src}\..\drivers\K40_Driver_Install.exe'))
+Source: "..\drivers\libusb0.dll";            DestDir: "{app}";         Flags: ignoreversion; Check: FileExists(ExpandConstant('{src}\..\drivers\libusb0.dll'))
 
 ; ── Factory data bundle (only present if build.ps1 found data) ──────
 ; Only installed on FRESH INSTALL — existing user data is NEVER overwritten.

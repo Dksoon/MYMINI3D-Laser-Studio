@@ -12,7 +12,7 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 $AppName     = "MYMINI3D Laser Studio"
-$Version     = "2.1.6"
+$Version     = "2.1.7"
 
 Write-Host ""
 Write-Host "=====================================================" -ForegroundColor Cyan
@@ -52,26 +52,36 @@ if (-not (Test-Path $DistExe)) {
 }
 Write-Host "      Built: $DistExe" -ForegroundColor Green
 
-# -- Step 4.3: Bundle libusb-1.0.dll ----------------------------------
-Write-Host "[4.3] Looking for libusb-1.0.dll to bundle..." -ForegroundColor Yellow
-$LibusbDll = $null
-$LibusbSearchPaths = @(
-    "C:\Program Files (x86)\K40 Whisperer\libusb-1.0.dll",
-    "C:\Program Files\K40 Whisperer\libusb-1.0.dll",
-    "C:\K40 Whisperer\libusb-1.0.dll",
-    "C:\Windows\System32\libusb-1.0.dll",
-    "C:\Windows\SysWOW64\libusb-1.0.dll",
-    "$ProjectRoot\drivers\libusb-1.0.dll"
-)
-foreach ($p in $LibusbSearchPaths) {
-    if (Test-Path $p) { $LibusbDll = $p; break }
-}
-if ($LibusbDll) {
-    Copy-Item $LibusbDll "$ProjectRoot\dist\$AppName\libusb-1.0.dll" -Force
-    Write-Host "      Bundled libusb-1.0.dll from: $LibusbDll" -ForegroundColor Green
+# -- Step 4.3: Bundle K40 Whisperer USB driver files ------------------
+Write-Host "[4.3] Bundling K40 USB driver files..." -ForegroundColor Yellow
+
+# libusb0.dll (K40 Whisperer's approach - libusb-win32, most reliable)
+$Libusb0Dll = "$ProjectRoot\drivers\libusb0.dll"
+if (Test-Path $Libusb0Dll) {
+    Copy-Item $Libusb0Dll "$ProjectRoot\dist\$AppName\libusb0.dll" -Force
+    Write-Host "      Bundled libusb0.dll (K40W libusb-win32 backend)" -ForegroundColor Green
 } else {
-    Write-Host "      libusb-1.0.dll not found - USB may need manual driver install." -ForegroundColor Yellow
-    Write-Host "      Install K40 Whisperer first, then rebuild, to auto-bundle it." -ForegroundColor Yellow
+    Write-Host "      WARNING: drivers\libusb0.dll not found!" -ForegroundColor Red
+    Write-Host "      Copy from: C:\Program Files\K40 Whisperer\driver\amd64\libusb0.dll" -ForegroundColor Yellow
+}
+
+# K40_Driver_Install.exe (K40 Whisperer's proven installer)
+$K40Installer = "$ProjectRoot\drivers\K40_Driver_Install.exe"
+if (Test-Path $K40Installer) {
+    Copy-Item $K40Installer "$ProjectRoot\dist\$AppName\K40_Driver_Install.exe" -Force
+    Write-Host "      Bundled K40_Driver_Install.exe" -ForegroundColor Green
+} else {
+    Write-Host "      WARNING: drivers\K40_Driver_Install.exe not found!" -ForegroundColor Yellow
+    Write-Host "      Copy from: C:\Program Files\K40 Whisperer\driver\K40_Driver_Install.exe" -ForegroundColor Yellow
+}
+
+# libusb-1.0.dll (WinUSB fallback)
+$Libusb1Dll = "$ProjectRoot\drivers\libusb-1.0.dll"
+if (Test-Path $Libusb1Dll) {
+    Copy-Item $Libusb1Dll "$ProjectRoot\dist\$AppName\libusb-1.0.dll" -Force
+    Write-Host "      Bundled libusb-1.0.dll (WinUSB fallback)" -ForegroundColor Green
+} else {
+    Write-Host "      libusb-1.0.dll not found - will fall back to system search." -ForegroundColor Yellow
 }
 
 # -- Step 4.4: Bundle master product list (if available) --------------

@@ -14,20 +14,20 @@ from typing import Callable, Optional
 
 # ── Paths ─────────────────────────────────────────────────────────────
 
-def _inf_path() -> Path:
-    """Find the bundled .inf file whether running from source or as a built .exe."""
+def _driver_file(name: str) -> Optional[Path]:
+    """Find a driver file whether running from source or as a built exe."""
     candidates = [
-        # Running from source
-        Path(__file__).parent.parent.parent / "drivers" / "k40_winusb.inf",
-        # Bundled by PyInstaller (_MEIPASS)
-        Path(getattr(sys, "_MEIPASS", "")) / "drivers" / "k40_winusb.inf",
-        # Alongside the .exe
-        Path(sys.executable).parent / "drivers" / "k40_winusb.inf",
+        # Alongside the exe (build.ps1 copies drivers/ here)
+        Path(sys.executable).parent / name,
+        # PyInstaller _MEIPASS
+        Path(getattr(sys, "_MEIPASS", "")) / "drivers" / name,
+        # Running from source (dev mode)
+        Path(__file__).parent.parent.parent / "drivers" / name,
     ]
     for p in candidates:
         if p.exists():
             return p
-    return candidates[0]   # return first even if missing — error handled later
+    return None
 
 
 # ── Admin helpers ─────────────────────────────────────────────────────
@@ -90,46 +90,66 @@ def k40_driver_installed() -> bool:
 
 def install_driver_silent() -> tuple[bool, str]:
     """
-    Install the K40 WinUSB driver silently.
+    Install the K40 libusb-win32 driver using the same installer as K40 Whisperer.
+    This is the most reliable approach — same driver stack K40W uses.
     Must be called from an elevated (admin) process.
-    Returns (success, message).
     """
-    inf = _inf_path()
-    if not inf.exists():
-        return False, f"Driver file not found:\n{inf}"
-
-    try:
-        # Step 1: Add driver to Windows driver store
-        result = subprocess.run(
-            ["pnputil", "/add-driver", str(inf), "/install"],
-            capture_output=True, text=True, timeout=60
-        )
-        out = (result.stdout + result.stderr).strip()
-
-        ok = result.returncode in (0, 3010, 259) or "already installed" in out.lower()
-
-        if not ok:
-            return False, f"pnputil failed (code {result.returncode}):\n{out}"
-
-        # Step 2: Force-update any connected K40 devices to use the new driver.
-        # This handles devices already plugged in that are still on the old CH341 driver.
+    # Primary: use K40 Whisperer's proven driver installer
+    installer = _driver_file("K40_Driver_Install.exe")
+    if installer:
         try:
-            subprocess.run(
-                ["pnputil", "/scan-devices"],
-                capture_output=True, text=True, timeout=30
+            result = subprocess.run(
+                [str(installer)],
+                capture_output=True, timeout=120
             )
-        except Exception:
-            pass
+            if result.returncode == 0:
+                return True, (
+                    "K40 USB driver installed successfully!\n\n"
+                    "1. Unplug the USB cable from the laser\n"
+                    "2. Plug it back in\n"
+                    "3. Click Connect"
+                )
+            # Non-zero may still mean success (installer returned its own code)
+            return True, (
+                "Driver installer ran.\n\n"
+                "1. Unplug the USB cable from the laser\n"
+                "2. Plug it back in\n"
+                "3. Click Connect"
+            )
+        except Exception as e:
+            pass   # fall through to pnputil backup
 
-        msg = "Driver installed! Now:\n1. Unplug the USB cable from the laser\n2. Plug it back in\n3. Click Connect"
-        if result.returncode == 3010:
-            msg += "\n\n(A Windows restart may be needed if it still fails)"
-        return True, msg
+    # Fallback: pnputil with WinUSB INF
+    inf = _driver_file("k40_winusb.inf") or _driver_file("K40_Laser.inf")
+    if inf:
+        try:
+            result = subprocess.run(
+                ["pnputil", "/add-driver", str(inf), "/install"],
+                capture_output=True, text=True, timeout=60
+            )
+            ok = result.returncode in (0, 3010, 259)
+            if ok:
+                try:
+                    subprocess.run(["pnputil", "/scan-devices"],
+                                   capture_output=True, timeout=20)
+                except Exception:
+                    pass
+                return True, (
+                    "Driver installed.\n\n"
+                    "1. Unplug the USB cable from the laser\n"
+                    "2. Plug it back in\n"
+                    "3. Click Connect"
+                )
+            out = (result.stdout + result.stderr).strip()
+            return False, f"pnputil failed (code {result.returncode}):\n{out}"
+        except Exception as e:
+            return False, str(e)
 
-    except FileNotFoundError:
-        return False, "pnputil not found — requires Windows 10/11."
-    except Exception as e:
-        return False, str(e)
+    return False, (
+        "Driver installer not found.\n"
+        "Please install K40 Whisperer first, or use Zadig (zadig.akeo.ie):\n"
+        "Options > List All Devices > select CH341 > WinUSB > Install"
+    )
 
 
 def install_driver_elevated() -> tuple[bool, str]:

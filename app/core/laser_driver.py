@@ -24,64 +24,68 @@ except ImportError:
 # pyusb needs libusb-1.0.dll. Search common locations including
 # K40 Whisperer's install (which also uses it).
 
-def _find_libusb_dll() -> Optional[str]:
-    """Return path to libusb-1.0.dll, or None if not found."""
-    # When running as a PyInstaller exe, the DLL sits next to the .exe,
-    # NOT inside _MEIPASS (which holds Python bytecode).
-    _exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    _mei_dir = getattr(sys, "_MEIPASS", "")
+def _exe_dir() -> str:
+    """Directory containing our exe (or script in dev mode)."""
+    return os.path.dirname(os.path.abspath(sys.executable))
 
-    candidates = [
-        # Our installer copies it here (next to MYMINI3D Laser Studio.exe)
-        os.path.join(_exe_dir, "libusb-1.0.dll"),
-        # PyInstaller _MEIPASS (if bundled as binary in build.spec)
-        os.path.join(_mei_dir, "libusb-1.0.dll") if _mei_dir else "",
-        # K40 Whisperer installation
-        r"C:\Program Files (x86)\K40 Whisperer\libusb-1.0.dll",
-        r"C:\Program Files\K40 Whisperer\libusb-1.0.dll",
-        r"C:\K40 Whisperer\libusb-1.0.dll",
-        # Steam
-        r"C:\Program Files (x86)\Steam\libusb-1.0.dll",
-        r"C:\Program Files\Steam\libusb-1.0.dll",
-        # ASUS Armory Crate
-        r"C:\Program Files\ASUS\ARMOURY CRATE Lite Service\HWComponentPlugin\libusb-1.0.dll",
-        # System
-        r"C:\Windows\System32\libusb-1.0.dll",
-        r"C:\Windows\SysWOW64\libusb-1.0.dll",
+
+def _find_dll(names: list) -> Optional[str]:
+    """Search common locations for any of the given DLL filenames."""
+    _mei = getattr(sys, "_MEIPASS", "")
+    _exe = _exe_dir()
+    dirs = [
+        _exe,                                           # next to our .exe (primary)
+        _mei,                                           # PyInstaller temp folder
+        r"C:\Program Files\K40 Whisperer",              # K40W root
+        r"C:\Program Files\K40 Whisperer\driver\amd64", # K40W driver amd64
+        r"C:\Program Files (x86)\K40 Whisperer",
+        r"C:\Program Files (x86)\Steam",
+        r"C:\Program Files\Steam",
+        r"C:\Windows\System32",
+        r"C:\Windows\SysWOW64",
     ]
-    for path in candidates:
-        if path and os.path.isfile(path):
-            return path
+    for d in dirs:
+        if not d:
+            continue
+        for name in names:
+            p = os.path.join(d, name)
+            if os.path.isfile(p):
+                return p
     return None
 
 
 def _get_usb_backend():
-    """Return a working pyusb backend (tries libusb1 then libusb0), or None."""
+    """
+    Return a working pyusb backend.
+    Tries libusb0 (libusb-win32) first — same as K40 Whisperer.
+    Falls back to libusb1 (WinUSB) if not found.
+    """
     if not USB_AVAILABLE:
         return None
 
-    # --- Try libusb1 (libusb-1.0.dll) ---
-    dll = _find_libusb_dll()
-    if dll:
-        try:
-            b = _libusb1_mod.get_backend(find_library=lambda _: dll)
+    # --- libusb0 (libusb-win32) — K40 Whisperer's approach, most reliable ---
+    try:
+        import usb.backend.libusb0 as _libusb0_mod
+        dll0 = _find_dll(["libusb0.dll", "libusb0_x86.dll"])
+        if dll0:
+            b = _libusb0_mod.get_backend(find_library=lambda _: dll0)
             if b:
                 return b
-        except Exception:
-            pass
-
-    # --- Try libusb1 system default ---
-    try:
-        b = _libusb1_mod.get_backend()
+        # Try system default
+        b = _libusb0_mod.get_backend()
         if b:
             return b
     except Exception:
         pass
 
-    # --- Try libusb0 (libusb-win32, used by some K40W installations) ---
+    # --- libusb1 (WinUSB) fallback ---
     try:
-        import usb.backend.libusb0 as _libusb0_mod
-        b = _libusb0_mod.get_backend()
+        dll1 = _find_dll(["libusb-1.0.dll"])
+        if dll1:
+            b = _libusb1_mod.get_backend(find_library=lambda _: dll1)
+            if b:
+                return b
+        b = _libusb1_mod.get_backend()
         if b:
             return b
     except Exception:
