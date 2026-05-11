@@ -52,6 +52,28 @@ if (-not (Test-Path $DistExe)) {
 }
 Write-Host "      Built: $DistExe" -ForegroundColor Green
 
+# ── Step 4.3: Bundle libusb-1.0.dll ──────────────────────────────────
+Write-Host "[4.3] Looking for libusb-1.0.dll to bundle..." -ForegroundColor Yellow
+$LibusbDll = $null
+$LibusbSearchPaths = @(
+    "C:\Program Files (x86)\K40 Whisperer\libusb-1.0.dll",
+    "C:\Program Files\K40 Whisperer\libusb-1.0.dll",
+    "C:\K40 Whisperer\libusb-1.0.dll",
+    "C:\Windows\System32\libusb-1.0.dll",
+    "C:\Windows\SysWOW64\libusb-1.0.dll",
+    "$ProjectRoot\drivers\libusb-1.0.dll"
+)
+foreach ($p in $LibusbSearchPaths) {
+    if (Test-Path $p) { $LibusbDll = $p; break }
+}
+if ($LibusbDll) {
+    Copy-Item $LibusbDll "$ProjectRoot\dist\$AppName\libusb-1.0.dll" -Force
+    Write-Host "      Bundled libusb-1.0.dll from: $LibusbDll" -ForegroundColor Green
+} else {
+    Write-Host "      libusb-1.0.dll not found — USB may require manual driver install." -ForegroundColor Yellow
+    Write-Host "      Install K40 Whisperer first, then rebuild, to bundle it automatically." -ForegroundColor Yellow
+}
+
 # ── Step 4.4: Bundle master product list (if available) ──────────────
 Write-Host "[4.4] Checking for master product list..." -ForegroundColor Yellow
 $ProductsFile = "$ProjectRoot\installer\products_default.json"

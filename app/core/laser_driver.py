@@ -4,6 +4,8 @@ Implements the same USB protocol as K40 Whisperer (open-source, GPL).
 Vendor: 0x1a86 (CH341), Product: 0x5512
 """
 from __future__ import annotations
+import os
+import sys
 import time
 import threading
 from typing import Callable, Optional
@@ -12,9 +14,55 @@ from dataclasses import dataclass, field
 try:
     import usb.core
     import usb.util
+    import usb.backend.libusb1 as _libusb1_mod
     USB_AVAILABLE = True
 except ImportError:
     USB_AVAILABLE = False
+
+
+# ── libusb DLL discovery (Windows) ───────────────────────────────────
+# pyusb needs libusb-1.0.dll. Search common locations including
+# K40 Whisperer's install (which also uses it).
+
+def _find_libusb_dll() -> Optional[str]:
+    """Return path to libusb-1.0.dll, or None if not found."""
+    candidates = [
+        # Bundled in our own app folder (PyInstaller _MEIPASS or exe dir)
+        os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(
+            os.path.abspath(sys.executable))), "libusb-1.0.dll"),
+        # K40 Whisperer installation (most likely to have it)
+        r"C:\Program Files (x86)\K40 Whisperer\libusb-1.0.dll",
+        r"C:\Program Files\K40 Whisperer\libusb-1.0.dll",
+        r"C:\K40 Whisperer\libusb-1.0.dll",
+        # Other common locations
+        r"C:\Windows\System32\libusb-1.0.dll",
+        r"C:\Windows\SysWOW64\libusb-1.0.dll",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _get_usb_backend():
+    """Return a working pyusb backend, or None."""
+    if not USB_AVAILABLE:
+        return None
+    dll = _find_libusb_dll()
+    if dll:
+        try:
+            b = _libusb1_mod.get_backend(find_library=lambda _: dll)
+            if b:
+                return b
+        except Exception:
+            pass
+    try:
+        return _libusb1_mod.get_backend()   # system default search
+    except Exception:
+        return None
+
+
+_USB_BACKEND = None   # initialised on first connect attempt
 
 # K40 USB identifiers
 K40_VENDOR_ID  = 0x1A86
@@ -61,12 +109,34 @@ class K40Driver:
             self.status.connected = True
             return True
         try:
-            kwargs = {"idVendor": self.vendor_id, "idProduct": self.product_id}
+            global _USB_BACKEND
+            if _USB_BACKEND is None:
+                _USB_BACKEND = _get_usb_backend()
+
+            if _USB_BACKEND is None:
+                self.status.message = (
+                    "USB driver not found.\n\n"
+                    "Fix: go to Machines → Install Driver, then reconnect.\n"
+                    "If it still fails, download Zadig from zadig.akeo.ie\n"
+                    "and install WinUSB for the device named 'CH341'."
+                )
+                return False
+
+            kwargs = {
+                "idVendor":  self.vendor_id,
+                "idProduct": self.product_id,
+                "backend":   _USB_BACKEND,
+            }
             if self.serial:
                 kwargs["serial_number"] = self.serial
+
             dev = usb.core.find(**kwargs)
             if dev is None:
-                self.status.message = "Device not found"
+                self.status.message = (
+                    "Laser machine not found on USB.\n"
+                    "Check the USB cable is plugged in and the machine is ON.\n"
+                    "Then try Install Driver if you haven't already."
+                )
                 return False
             if dev.is_kernel_driver_active(0):
                 dev.detach_kernel_driver(0)
